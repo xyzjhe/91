@@ -91,6 +91,10 @@ func (a *AdminServer) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	ok, err := a.Auth.Login(w, r, body.Username, body.Password)
 	if err != nil {
+		if errors.Is(err, auth.ErrLoginIPBanned) {
+			http.Error(w, "ip banned", http.StatusForbidden)
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}

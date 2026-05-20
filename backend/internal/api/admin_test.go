@@ -14,8 +14,38 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/video-site/backend/internal/auth"
 	"github.com/video-site/backend/internal/catalog"
 )
+
+func TestHandleLoginReturnsForbiddenForBannedIP(t *testing.T) {
+	ctx := context.Background()
+	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
+	if err != nil {
+		t.Fatalf("open catalog: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cat.Close(); err != nil {
+			t.Fatalf("close catalog: %v", err)
+		}
+	})
+	if err := cat.BanLoginIP(ctx, "203.0.113.20", "test"); err != nil {
+		t.Fatalf("ban ip: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
+	req.RemoteAddr = "203.0.113.20:12345"
+	rr := httptest.NewRecorder()
+
+	(&AdminServer{
+		Catalog: cat,
+		Auth:    &auth.Authenticator{Username: "admin", Password: "secret", Catalog: cat},
+	}).handleLogin(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body = %s", rr.Code, rr.Body.String())
+	}
+}
 
 func TestHandleUpsertDrivePreservesExistingCredentialsWhenRequestCredentialsEmpty(t *testing.T) {
 	ctx := context.Background()

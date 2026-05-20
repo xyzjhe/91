@@ -735,6 +735,27 @@ func (c *Catalog) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+func (c *Catalog) BanLoginIP(ctx context.Context, ip, reason string) error {
+	now := time.Now().UnixMilli()
+	_, err := c.db.ExecContext(ctx,
+		`INSERT INTO banned_login_ips (ip, reason, created_at) VALUES (?, ?, ?)
+		 ON CONFLICT(ip) DO UPDATE SET reason = excluded.reason`,
+		ip, reason, now)
+	return err
+}
+
+func (c *Catalog) IsLoginIPBanned(ctx context.Context, ip string) (bool, error) {
+	var exists int
+	err := c.db.QueryRowContext(ctx, `SELECT 1 FROM banned_login_ips WHERE ip = ?`, ip).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // ---------- Settings ----------
 
 func (c *Catalog) GetSetting(ctx context.Context, key, defaultValue string) (string, error) {

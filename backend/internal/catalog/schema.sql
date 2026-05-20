@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     expires_at INTEGER NOT NULL
 );
 
+-- 管理后台登录永久封禁 IP
+CREATE TABLE IF NOT EXISTS banned_login_ips (
+    ip         TEXT PRIMARY KEY,
+    reason     TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+);
+
 -- 全局 key-value 设置（preview 开关等）
 CREATE TABLE IF NOT EXISTS settings (
     key        TEXT PRIMARY KEY,
