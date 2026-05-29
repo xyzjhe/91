@@ -588,7 +588,7 @@ func TestRunOnceKeepsAllLocalWhenWithinKeepWindow(t *testing.T) {
 }
 
 // TestRunOnceMigratesOnlyOlderFilesBeyondKeepWindow 验证：本地文件数 > KeepLatestN 时
-// 按 mtime 降序保留最新 N 个，超出部分（更旧的）才上传到 PikPak。
+// 按 mtime 降序保留最新 N 个，超出部分（更旧的）才上传到目标盘。
 func TestRunOnceMigratesOnlyOlderFilesBeyondKeepWindow(t *testing.T) {
 	cat := setupCatalog(t)
 	src, _ := setupSpider91(t)
@@ -840,7 +840,6 @@ func TestNonCaptchaErrorDoesNotTriggerCooldown(t *testing.T) {
 		t.Fatalf("non-captcha error should not trigger cooldown")
 	}
 }
-
 
 // TestRunOnceMigratesToP115Target 验证：当目标 drive 是 115（kind="p115"）时，
 // migrator 也能正确把 spider91 视频上传过去并改写 catalog。

@@ -289,7 +289,7 @@ func (g *Generator) generateThumbnailAtOffset(ctx context.Context, link *drives.
 	args = append(args,
 		"-i", ffmpegLink.URL,
 		"-frames:v", "1",
-		"-vf", fmt.Sprintf("scale=%d:-2", g.cfg.Width),
+		"-vf", thumbnailVideoFilter(g.cfg.Width),
 		"-q:v", "3",
 		"-y", dst,
 	)
@@ -305,6 +305,12 @@ func (g *Generator) generateThumbnailAtOffset(ctx context.Context, link *drives.
 		return fmt.Errorf("ffmpeg thumb produced empty file, stderr: %s", string(out))
 	}
 	return nil
+}
+
+func thumbnailVideoFilter(width int) string {
+	// FFmpeg 7 rejects non-full-range YUV for MJPEG/JPEG output. Force the
+	// scaled frame into a JPEG-friendly full-range pixel format before encode.
+	return fmt.Sprintf("scale=%d:-2:out_range=pc,format=yuvj420p", width)
 }
 
 func thumbnailOffsetFallbackAllowed(err error) bool {

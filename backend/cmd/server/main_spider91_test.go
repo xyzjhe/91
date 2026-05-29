@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
+	"io"
 	"testing"
 
 	"github.com/video-site/backend/internal/catalog"
+	"github.com/video-site/backend/internal/drives"
+	"github.com/video-site/backend/internal/proxy"
 )
 
 func TestSpider91IntCredFallbacks(t *testing.T) {
@@ -30,3 +34,50 @@ func TestSpider91IntCredFallbacks(t *testing.T) {
 		})
 	}
 }
+
+func TestSpider91UploadDriveIDDoesNotAutoSelectTarget(t *testing.T) {
+	reg := proxy.NewRegistry()
+	reg.Set("p115-one", &spider91UploadTargetFakeDrive{id: "p115-one", kind: "p115"})
+
+	app := &App{registry: reg}
+	if got := app.Spider91UploadDriveID(); got != "" {
+		t.Fatalf("empty upload target selected %q, want local-only empty target", got)
+	}
+
+	app.spider91UploadDriveID = "p115-one"
+	if got := app.Spider91UploadDriveID(); got != "p115-one" {
+		t.Fatalf("explicit upload target = %q, want p115-one", got)
+	}
+
+	app.spider91UploadDriveID = "missing"
+	if got := app.Spider91UploadDriveID(); got != "" {
+		t.Fatalf("missing upload target = %q, want empty", got)
+	}
+}
+
+type spider91UploadTargetFakeDrive struct {
+	id   string
+	kind string
+}
+
+func (d *spider91UploadTargetFakeDrive) Kind() string { return d.kind }
+func (d *spider91UploadTargetFakeDrive) ID() string   { return d.id }
+func (d *spider91UploadTargetFakeDrive) Init(context.Context) error {
+	return nil
+}
+func (d *spider91UploadTargetFakeDrive) List(context.Context, string) ([]drives.Entry, error) {
+	return nil, nil
+}
+func (d *spider91UploadTargetFakeDrive) Stat(context.Context, string) (*drives.Entry, error) {
+	return nil, drives.ErrNotSupported
+}
+func (d *spider91UploadTargetFakeDrive) StreamURL(context.Context, string) (*drives.StreamLink, error) {
+	return nil, drives.ErrNotSupported
+}
+func (d *spider91UploadTargetFakeDrive) Upload(context.Context, string, string, io.Reader, int64) (string, error) {
+	return "", drives.ErrNotSupported
+}
+func (d *spider91UploadTargetFakeDrive) EnsureDir(context.Context, string) (string, error) {
+	return "", drives.ErrNotSupported
+}
+func (d *spider91UploadTargetFakeDrive) RootID() string { return "root" }

@@ -199,8 +199,8 @@ func (c *Catalog) MigrateVideoToDrive(ctx context.Context, videoID, newDriveID, 
 }
 
 // ListVideosByDriveID 列出指定 drive 下所有未隐藏的视频，按 published_at 倒序。
-// 给 spider91 → PikPak 迁移 worker 用：扫描 spider91 drive 下所有视频，
-// 检查哪些还有本地文件，依次上传到 PikPak。
+// 给 spider91 → 115/PikPak 迁移 worker 用：扫描 spider91 drive 下所有视频，
+// 检查哪些还有本地文件，依次上传到目标盘。
 func (c *Catalog) ListVideosByDriveID(ctx context.Context, driveID string, limit int) ([]*Video, error) {
 	if driveID == "" {
 		return nil, fmt.Errorf("catalog: list videos by drive: empty drive id")

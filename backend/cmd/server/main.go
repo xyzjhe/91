@@ -271,8 +271,8 @@ type App struct {
 
 	// 全站主题（"dark" | "pink"），从 DB 读
 	theme string
-	// 显式指定的 spider91 上传目标 drive ID；
-	// 未设置时由 Spider91UploadDriveID() 在所有 pikpak/p115 drive 中自动挑选唯一一个。
+	// 显式指定的 spider91 上传目标 drive ID。
+	// 空字符串表示本地保存不上传，不再自动挑选 pikpak/p115 drive。
 	spider91UploadDriveID string
 
 	// spider91Migrator 周期把 spider91 视频上传到目标 drive（PikPak 或 115）。
@@ -360,42 +360,24 @@ func (a *App) loadTheme(ctx context.Context) {
 	a.mu.Unlock()
 }
 
-// Spider91UploadDriveID 返回当前生效的 spider91 上传目标 drive ID。
-//
-// 解析顺序：
-//  1. 管理员通过 PUT /admin/api/settings 显式设置过 → 验证该 drive 仍存在且是
-//     合法目标盘（pikpak 或 p115）→ 返回该 ID。
-//  2. 否则系统中如果只有一个合法目标盘（即 pikpak drive 数量+p115 drive 数量==1），
-//     自动返回它。这样单网盘场景"开箱即用"。
-//  3. 多个候选并存时返回空串：迁移 worker 静默跳过，等管理员显式指定。
-//
-// 注意"合法目标盘"目前是 pikpak ∪ p115。后续添加新的可上传盘要在两个分支同步加。
+// Spider91UploadDriveID 返回当前配置的 spider91 上传目标 drive ID。
+// 空字符串表示本地保存不上传；只有管理员显式选择 pikpak/p115 drive 时才迁移上传。
 func (a *App) Spider91UploadDriveID() string {
 	a.mu.Lock()
 	explicit := a.spider91UploadDriveID
 	a.mu.Unlock()
-	if explicit != "" {
-		// 验证显式设置的 drive 仍然存在且 kind 合法；不在则降级到自动选取
-		if d, ok := a.registry.Get(explicit); ok && isSpider91UploadKind(d.Kind()) {
-			return explicit
-		}
+	if explicit == "" {
+		return ""
 	}
-	var found string
-	for _, d := range a.registry.All() {
-		if !isSpider91UploadKind(d.Kind()) {
-			continue
-		}
-		if found != "" {
-			// 多个候选 drive 时不自动选；管理员必须显式指定
-			return ""
-		}
-		found = d.ID()
+	// 验证显式设置的 drive 仍然存在且 kind 合法；不在则视为未配置。
+	if d, ok := a.registry.Get(explicit); ok && isSpider91UploadKind(d.Kind()) {
+		return explicit
 	}
-	return found
+	return ""
 }
 
 // SetSpider91UploadDriveID 设置 spider91 上传目标 drive ID 并持久化。
-// 接受空字符串（清除显式设置，回退到自动模式）。
+// 接受空字符串（本地保存不上传）。
 // 设置一个不存在或 kind 不是 pikpak / p115 的 drive 会返回错误。
 func (a *App) SetSpider91UploadDriveID(ctx context.Context, driveID string) error {
 	driveID = strings.TrimSpace(driveID)

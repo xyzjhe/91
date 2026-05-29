@@ -48,7 +48,7 @@ type FormState = {
    * 单独通过 PUT /admin/api/settings 写到全局 setting。在 form state 里维护它
    * 是为了让 DriveForm 能读写同一份编辑状态。
    *
-   * 空字符串 = 自动模式（系统中唯一的 pikpak/p115 drive）。
+   * 空字符串 = 本地保存，不上传。
    */
   spider91UploadDriveId: string;
 };
@@ -81,7 +81,7 @@ export function DrivesPage() {
   const { show } = useToast();
 
   // 当前系统中可作为 spider91 上传目标的 drive 列表（pikpak ∪ p115）。
-  // 用户保存 spider91 drive 时从这里挑一个；空表示走"自动"模式。
+  // 用户保存 spider91 drive 时从这里挑一个；空表示本地保存不上传。
   const uploadTargets = useMemo(
     () => list.filter((d) => d.kind === "pikpak" || d.kind === "p115"),
     [list]
@@ -126,7 +126,7 @@ export function DrivesPage() {
 
   function openCreate() {
     // 创建时把全局 setting 当前值带进表单，方便用户在新建第一个 spider91 drive 时
-    // 直接看到当前的上传目标选择（一般是空 = 自动）。
+    // 直接看到当前的上传目标选择（一般是空 = 本地保存）。
     setForm({
       ...emptyForm,
       spider91UploadDriveId: settings?.spider91UploadDriveId ?? "",
@@ -953,10 +953,9 @@ function DriveForm({
  * Spider91UploadTargetField 是 spider91 drive 表单专属的"上传目标"下拉。
  *
  * 行为：
- *   - 选项 = "（自动）" + 系统中所有 pikpak/p115 drive
- *   - "自动" 模式（value=""）下，后端在迁移 worker 启动时挑唯一的目标盘；
- *     系统中如果同时挂着 pikpak 和 p115 drive 必须显式选定，否则不会上传
- *   - 没有任何 pikpak/p115 drive 时给一行提示文字，告诉用户先去添加目标盘
+ *   - 选项 = "本地保存，不上传" + 系统中所有 pikpak/p115 drive
+ *   - value="" 时后端不迁移上传，视频保存在服务器本地
+ *   - 没有任何 pikpak/p115 drive 时仍允许选择本地保存
  *   - 该字段写入的是全局 setting `spider91.upload_drive_id`，不是 drive 自己的
  *     credentials —— 所有 spider91 drive 共享同一个上传目标
  */
@@ -969,53 +968,20 @@ function Spider91UploadTargetField({
   onChange: (v: string) => void;
   uploadTargets: api.AdminDrive[];
 }) {
-  // 文案根据系统中实际挂载的目标盘 kind 自适应：
-  //   - 只挂了 PikPak  → 文案只讲 "PikPak"
-  //   - 只挂了 115     → 文案只讲 "115 网盘"
-  //   - 两类都挂       → 文案讲 "PikPak / 115 网盘"
-  // 这样在单一类型场景下用户不会被另一类的字样干扰。
-  const kindsPresent = new Set(uploadTargets.map((d) => d.kind));
-  const hasPikPak = kindsPresent.has("pikpak");
-  const has115 = kindsPresent.has("p115");
-  const presentLabel =
-    hasPikPak && has115
-      ? "PikPak / 115 网盘"
-      : hasPikPak
-      ? "PikPak"
-      : has115
-      ? "115 网盘"
-      : "PikPak 或 115 网盘";
-
   return (
     <div className="admin-form__row">
       <label>视频上传目标</label>
-      {uploadTargets.length === 0 ? (
-        <>
-          <select value="" disabled>
-            <option value="">（请先添加 {presentLabel}）</option>
-          </select>
-          <div className="admin-form__help">
-            目前系统里还没有 {presentLabel} drive。可以先保存 91 爬虫，之后再回来选择上传目标。
-          </div>
-        </>
-      ) : (
-        <>
-          <select value={value} onChange={(e) => onChange(e.target.value)}>
-            <option value="">（自动：唯一的 {presentLabel}）</option>
-            {uploadTargets.map((d) => (
-              <option key={d.id} value={d.id}>
-                {kindLabel[d.kind] ?? d.kind} · {d.name || d.id}
-              </option>
-            ))}
-          </select>
-          <div className="admin-form__help">
-            爬取后的旧视频会上传到该云盘根目录。该设置全局生效；
-            {uploadTargets.length > 1
-              ? `如果同时挂着多个 ${presentLabel} drive，"自动"模式不会工作，必须显式选定一个。`
-              : `当前只挂着 1 个 ${presentLabel}，"自动"模式会直接选用它。`}
-          </div>
-        </>
-      )}
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">本地保存，不上传</option>
+        {uploadTargets.map((d) => (
+          <option key={d.id} value={d.id}>
+            {kindLabel[d.kind] ?? d.kind} · {d.name || d.id}
+          </option>
+        ))}
+      </select>
+      <div className="admin-form__help">
+        选择本地保存时，爬取视频只保存在服务器本地；选择 115 网盘或 PikPak 后，较早的视频会上传到该云盘根目录。该设置全局生效。
+      </div>
     </div>
   );
 }

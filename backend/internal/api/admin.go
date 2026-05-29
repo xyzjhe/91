@@ -40,7 +40,7 @@ type AdminServer struct {
 	// Theme 读写（"dark" | "pink"）
 	GetTheme func() string
 	SetTheme func(theme string) error
-	// Spider91 → PikPak 上传目标 drive ID 读写
+	// Spider91 → 115/PikPak 上传目标 drive ID 读写
 	GetSpider91UploadDriveID func() string
 	SetSpider91UploadDriveID func(driveID string) error
 	// OnRunNightlyJob 触发一次完整的凌晨流水线（Phase1 扫盘 + Phase2 91 爬虫 +
@@ -748,7 +748,7 @@ func (a *AdminServer) handleGetSettings(w http.ResponseWriter, r *http.Request) 
 
 func (a *AdminServer) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// 用 map 区分"没传"和"传了空字符串"两种语义；空 spider91 上传 ID 表示
-	// 清除显式设置（回退到自动模式）。
+	// 本地保存不上传。
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeErr(w, http.StatusBadRequest, err)

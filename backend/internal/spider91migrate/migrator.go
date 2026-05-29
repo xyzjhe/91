@@ -272,7 +272,7 @@ func (m *Migrator) runOnce(ctx context.Context) {
 
 	target, pp, err := m.resolveTarget()
 	if err != nil {
-		// 没目标就静默 —— 用户可能还没配 PikPak drive
+		// 没目标就静默 —— 用户选择了本地保存，或还没配 115/PikPak drive。
 		return
 	}
 
@@ -382,7 +382,7 @@ func (m *Migrator) spider91Drives() []*spider91.Driver {
 //   - 列出 spider91 drive 本地 videos/ 目录所有 mp4 文件，按 mtime 降序排
 //   - 跳过最新 KeepLatestN 个：这些是用户希望保留在本地的最新爬取
 //   - 对剩下的（更旧）逐个处理：
-//   - 还没迁移（drive_id 仍是 src.ID()）→ 上传到 PikPak + 改 catalog + 删本地
+//   - 还没迁移（drive_id 仍是 src.ID()）→ 上传到目标盘 + 改 catalog + 删本地
 //   - 已经迁移过但本地还有残留 → 仅删本地（兜底）
 //
 // KeepLatestN < 0 时不保护任何本地文件，全部尝试迁移（旧行为，主要给测试用）。
@@ -484,7 +484,7 @@ func (m *Migrator) migrateDrive(ctx context.Context, src *spider91.Driver, targe
 	return migrated, nil
 }
 
-// migrateOne 把单条 spider91 视频上传到 PikPak 并改写 catalog。
+// migrateOne 把单条 spider91 视频上传到目标盘并改写 catalog。
 // 返回 (true, nil) 表示真的迁了一条；(false, nil) 表示跳过（本地文件已不在等）；
 // (false, err) 表示真出错。
 func (m *Migrator) migrateOne(ctx context.Context, v *catalog.Video, src *spider91.Driver, targetDriveID string, pp uploadTarget) (bool, error) {

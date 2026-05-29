@@ -161,6 +161,16 @@ func TestThumbnailOffsetsUseFiveSecondsWithEarlyFallbacks(t *testing.T) {
 	}
 }
 
+func TestThumbnailVideoFilterUsesFullRangeJPEGPixelFormat(t *testing.T) {
+	got := thumbnailVideoFilter(480)
+	if !strings.Contains(got, "scale=480:-2:out_range=pc") {
+		t.Fatalf("thumbnail filter = %q, want full-range scale output", got)
+	}
+	if !strings.Contains(got, "format=yuvj420p") {
+		t.Fatalf("thumbnail filter = %q, want JPEG-friendly pixel format", got)
+	}
+}
+
 func TestThumbnailOffsetFallbackAllowedForEmptyOutputAndTimeouts(t *testing.T) {
 	for _, err := range []error{
 		errors.New("ffmpeg thumb produced empty file, stderr: "),

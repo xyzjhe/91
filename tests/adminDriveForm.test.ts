@@ -13,3 +13,9 @@ test("spider91 drive form does not expose advanced crawler credentials", () => {
   assert.doesNotMatch(drivesPageSource, /python_path/);
   assert.doesNotMatch(drivesPageSource, /script_path/);
 });
+
+test("spider91 upload target uses explicit local-save option instead of auto target", () => {
+  assert.match(drivesPageSource, /本地保存，不上传/);
+  assert.doesNotMatch(drivesPageSource, /自动：唯一/);
+  assert.doesNotMatch(drivesPageSource, /自动模式/);
+});

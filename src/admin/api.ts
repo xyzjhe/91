@@ -325,7 +325,7 @@ export type Settings = {
   theme: Theme;
   /**
    * spider91 视频迁移到云盘时的目标 drive ID（必须是已挂载的 pikpak 或 p115 drive）。
-   * - 空字符串：自动模式。系统中如果只挂着一个 pikpak/p115 drive 就用它；多个并存时迁移会跳过。
+   * - 空字符串：本地保存，不上传到云盘。
    * - 非空：显式指定。后端会校验 drive 存在且 kind ∈ {pikpak, p115}。
    */
   spider91UploadDriveId: string;
