@@ -121,10 +121,7 @@ services:
       - ./data:/opt/video-site-91/data
     restart: unless-stopped
 ```
-
-`stable` 只会在发布 `v*` 正式 Release 时更新，不会跟随 `main` 分支开发镜像变化。
-升级到最新正式版：
-
+创建yml文件后运行下面指令
 ```bash
 docker compose pull
 docker compose up -d
