@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Film, Plus, RefreshCw, Search, Tags, Trash2 } from "lucide-react";
+import { CheckSquare, Film, Plus, RefreshCw, Search, Tags, Trash2 } from "lucide-react";
 import * as api from "./api";
 import { useToast } from "./ToastContext";
 
@@ -12,6 +12,9 @@ export function TagsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterSource, setFilterSource] = useState<string>("all");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const { show } = useToast();
 
   async function refresh() {
@@ -63,6 +66,46 @@ export function TagsPage() {
     }
   }
 
+  function toggleSelectMode() {
+    setSelectMode((m) => !m);
+    setSelected(new Set());
+  }
+
+  function toggleSelect(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${ids.length} 个标签吗？此操作会从所有视频上移除这些标签。`)) {
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      let ok = 0;
+      for (const id of ids) {
+        try {
+          await api.deleteTag(id);
+          ok += 1;
+        } catch {
+          /* 统计失败数，继续删除其余标签 */
+        }
+      }
+      const failed = ids.length - ok;
+      show(failed ? `已删除 ${ok} 个，${failed} 个失败` : `已删除 ${ok} 个标签`, failed ? "error" : "success");
+      setSelected(new Set());
+      setSelectMode(false);
+      await refresh();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
   const stats = useMemo(() => {
     let totalVideos = 0;
     let systemCount = 0;
@@ -99,6 +142,22 @@ export function TagsPage() {
       return matchesSearch && matchesSource;
     });
   }, [tags, searchQuery, filterSource]);
+
+  const deletableFiltered = useMemo(
+    () => filteredTags.filter((t) => t.source !== "system"),
+    [filteredTags]
+  );
+  const allSelected =
+    deletableFiltered.length > 0 && deletableFiltered.every((t) => selected.has(t.id));
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allSelected) deletableFiltered.forEach((t) => next.delete(t.id));
+      else deletableFiltered.forEach((t) => next.add(t.id));
+      return next;
+    });
+  }
 
   return (
     <section>
@@ -148,7 +207,7 @@ export function TagsPage() {
 
           <div className="admin-card">
             <div className="admin-card__title">
-              <Tags size={15} /> 系统标签统计
+              <Tags size={15} /> 标签总览
             </div>
             <div className="admin-tag-stats-list">
               <div className="admin-tag-stat-item">
@@ -158,14 +217,6 @@ export function TagsPage() {
               <div className="admin-tag-stat-item">
                 <span>关联视频次</span>
                 <strong>{stats.totalVideos}</strong>
-              </div>
-              <div className="admin-tag-stat-item">
-                <span>系统提取</span>
-                <strong>{stats.systemCount}</strong>
-              </div>
-              <div className="admin-tag-stat-item">
-                <span>用户创建</span>
-                <strong>{stats.userCount}</strong>
               </div>
             </div>
           </div>
@@ -213,8 +264,51 @@ export function TagsPage() {
               >
                 合集 ({stats.collectionCount})
               </button>
+              {stats.legacyCount > 0 && (
+                <button
+                  type="button"
+                  className={`admin-tags-filter-tab ${filterSource === "legacy" ? "is-active" : ""}`}
+                  onClick={() => setFilterSource("legacy")}
+                >
+                  旧数据 ({stats.legacyCount})
+                </button>
+              )}
             </div>
+
+            <button
+              type="button"
+              className={`admin-btn ${selectMode ? "is-primary" : ""}`}
+              onClick={toggleSelectMode}
+            >
+              <CheckSquare size={13} /> {selectMode ? "退出批量" : "批量删除"}
+            </button>
           </div>
+
+          {selectMode && (
+            <div className="admin-tags-bulkbar">
+              <label className="admin-check">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+                <span>全选当前 ({deletableFiltered.length})</span>
+              </label>
+              <span className="admin-tags-bulkbar__count">已选 {selected.size} 个</span>
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={() => setSelected(new Set())}
+                disabled={selected.size === 0}
+              >
+                清空
+              </button>
+              <button
+                type="button"
+                className="admin-btn is-danger"
+                onClick={handleBulkDelete}
+                disabled={selected.size === 0 || bulkDeleting}
+              >
+                <Trash2 size={13} /> {bulkDeleting ? "删除中..." : `删除选中 (${selected.size})`}
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="admin-empty">加载中...</div>
@@ -224,9 +318,26 @@ export function TagsPage() {
             </div>
           ) : (
             <div className="admin-tags-grid">
-              {filteredTags.map((tag) => (
-                <div key={tag.id} className="admin-tag-card">
+              {filteredTags.map((tag) => {
+                const selectable = selectMode && tag.source !== "system";
+                const isSelected = selected.has(tag.id);
+                return (
+                <div
+                  key={tag.id}
+                  className={`admin-tag-card${selectable ? " is-selectable" : ""}${
+                    selectable && isSelected ? " is-selected" : ""
+                  }`}
+                  onClick={selectable ? () => toggleSelect(tag.id) : undefined}
+                >
                   <div className="admin-tag-card__head">
+                    {selectable && (
+                      <input
+                        type="checkbox"
+                        className="admin-tag-card__check"
+                        checked={isSelected}
+                        readOnly
+                      />
+                    )}
                     <span className="admin-tag-card__title">{tag.label}</span>
                     <span className="admin-tag-card__source-badge" data-source={tag.source}>
                       {sourceLabel(tag.source)}
@@ -244,13 +355,13 @@ export function TagsPage() {
                   )}
 
                   <div className="admin-tag-card__footer">
-                    <span>ID: {tag.id}</span>
+                    <span className="admin-tag-card__count">
+                      <Film size={13} />
+                      <strong>{tag.count}</strong> 视频
+                    </span>
                     <div className="admin-tag-card__footer-actions">
-                      <span className="admin-tag-card__count">
-                        <Film size={11} />
-                        <strong>{tag.count} 视频</strong>
-                      </span>
-                      {tag.source !== "system" && (
+                      <span className="admin-tag-card__id">#{tag.id}</span>
+                      {!selectMode && tag.source !== "system" && (
                         <button
                           type="button"
                           className="admin-tag-card__delete"
@@ -265,7 +376,8 @@ export function TagsPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
