@@ -1507,13 +1507,11 @@
   text-align: left;
   color: inherit;
   transition: border-color var(--transition-fast),
-    transform var(--transition-fast),
     box-shadow var(--transition-fast);
 }
 
 .theme-card:hover:not(:disabled) {
   border-color: var(--border-accent);
-  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
@@ -1870,12 +1868,11 @@
   flex-direction: column;
   gap: var(--space-4);
   cursor: pointer;
-  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   position: relative;
 }
 
 .admin-drive-card:hover {
-  transform: translateY(-2px);
   border-color: var(--border-accent);
   box-shadow: var(--shadow-md);
 }
@@ -2268,12 +2265,11 @@
   border-radius: var(--radius-sm);
   padding: var(--space-4);
   gap: var(--space-3);
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   box-shadow: var(--shadow-sm);
 }
 
 .admin-tag-card:hover {
-  transform: translateY(-2px);
   border-color: var(--border-accent);
   box-shadow: var(--shadow-md);
 }
