@@ -132,7 +132,7 @@ export function DriveCardMetrics({ d }: { d: api.AdminDrive }) {
         </strong>
       </div>
       <div className="admin-drive-card__metric">
-        <span>Teaser 数 (就绪/失败)</span>
+        <span>预览视频数 (就绪/失败)</span>
         <strong>
           {d.teaserReadyCount ?? 0}
           <span style={{ fontSize: "11px", fontWeight: "normal", color: "var(--text-faint)" }}>

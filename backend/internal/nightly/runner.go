@@ -5,11 +5,11 @@
 // "扫描所有网盘"):
 //
 //	Phase 1: for each non-spider91 cloud drive
-//	           scan + delete-detection + enqueue thumb + enqueue teaser
-//	         wait until all thumb / teaser queues are idle
+//	           scan + delete-detection + enqueue thumb + enqueue preview video
+//	         wait until all thumb / preview-video queues are idle
 //	Phase 2: if any spider91 drive configured
-//	           crawl + enqueue teaser for new videos
-//	         wait until teaser queues are idle
+//	           crawl + enqueue preview video for new videos
+//	         wait until preview-video queues are idle
 //	Phase 3: spider91 → cloud migration (single sweep, captcha cooldown still
 //	         honored within this call)
 //	Phase 4: cleanup duplicate local preview/thumbnail assets after sampled
@@ -76,10 +76,10 @@ type Config struct {
 	ListSpider91Drives func(ctx context.Context) []string
 
 	// RunSpider91Crawl synchronously runs one crawl cycle (downloads + thumbs +
-	// teaser enqueue) for a single spider91 drive.
+	// preview-video enqueue) for a single spider91 drive.
 	RunSpider91Crawl func(ctx context.Context, driveID string)
 
-	// WaitPreviewQueuesIdle blocks until both the thumbnail and teaser queues
+	// WaitPreviewQueuesIdle blocks until both the thumbnail and preview-video queues
 	// across all drives are drained (queue empty + no in-flight task). It must
 	// honor ctx cancellation.
 	WaitPreviewQueuesIdle func(ctx context.Context) error

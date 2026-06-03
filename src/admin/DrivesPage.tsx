@@ -307,7 +307,7 @@ export function DrivesPage() {
     setRegenFailedId(d.id);
     try {
       await api.regenFailedPreviews(d.id);
-      show("已触发失败 teaser 重新生成", "success");
+      show("已触发失败预览视频重新生成", "success");
       refresh();
     } catch (e) {
       show(e instanceof Error ? e.message : "触发失败", "error");
@@ -354,8 +354,8 @@ export function DrivesPage() {
       const resp = await api.setDriveTeaserEnabled(d.id, next);
       show(
         resp.teaserEnabled
-          ? `已开启「${d.name || d.id}」的 Teaser 生成`
-          : `已关闭「${d.name || d.id}」的 Teaser 生成`,
+          ? `已开启「${d.name || d.id}」的预览视频生成`
+          : `已关闭「${d.name || d.id}」的预览视频生成`,
         "success"
       );
       setList((prev) =>

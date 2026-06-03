@@ -69,11 +69,14 @@ export function VideosPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(total, page * PAGE_SIZE);
+  const listSummary = driveId
+    ? `${driveNameMap.get(driveId) ?? driveId}：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`
+    : `全部网盘：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`;
 
   async function handleRegen(v: api.AdminVideo) {
     try {
       await api.regenPreview(v.id);
-      show("已触发 teaser 重生", "success");
+      show("已触发预览视频重生", "success");
     } catch (e) {
       show(e instanceof Error ? e.message : "触发失败", "error");
     }
@@ -161,7 +164,7 @@ export function VideosPage() {
       </header>
 
       {drives.length > 0 && (
-        <div className="admin-drive-teasers" aria-label="网盘 Teaser 统计">
+        <div className="admin-drive-teasers" aria-label="网盘预览视频统计">
           {drives.map((d) => (
             <button
               key={d.id}
@@ -191,20 +194,19 @@ export function VideosPage() {
         </div>
       )}
 
-      {selectedIds.size > 0 && (
-        <div className="admin-batch-actions admin-card" style={{ marginBottom: 16, padding: "8px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-          <span className="admin-text-faint">已选择 {selectedIds.size} 项（当前页）</span>
-          <button type="button" className="admin-btn is-primary" onClick={handleBatchRegen}>
-            <RefreshCw size={13} /> 批量重生 Teaser
-          </button>
-        </div>
-      )}
-
       {!loading && (
-        <div className="admin-videos-summary">
-          {driveId
-            ? `${driveNameMap.get(driveId) ?? driveId}：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`
-            : `全部网盘：共 ${total} 个视频，第 ${page} / ${totalPages} 页，显示 ${pageStart}-${pageEnd}`}
+        <div className="admin-videos-list-toolbar">
+          <div className="admin-videos-summary">{listSummary}</div>
+          {selectedIds.size > 0 && (
+            <div className="admin-videos-bulk-actions">
+              <span className="admin-videos-bulk-actions__count">
+                已选择 {selectedIds.size} 项
+              </span>
+              <button type="button" className="admin-btn is-primary" onClick={handleBatchRegen}>
+                <RefreshCw size={13} /> 批量重生预览视频
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -251,7 +253,7 @@ export function VideosPage() {
                 <th>作者</th>
                 <th>标签</th>
                 <th>时长</th>
-                <th>Teaser</th>
+                <th>预览视频</th>
                 <th>来源</th>
                 <th className="is-actions">操作</th>
               </tr>
@@ -288,7 +290,7 @@ export function VideosPage() {
                     </div>
                   </td>
                   <td data-label="时长">{formatDur(v.durationSeconds)}</td>
-                  <td data-label="Teaser">
+                  <td data-label="预览视频">
                     <PreviewStatus s={v.previewStatus} />
                   </td>
                   <td data-label="来源" className="admin-mono-cell">
@@ -298,7 +300,7 @@ export function VideosPage() {
                     <button type="button" className="admin-btn" onClick={() => setEditing(v)}>
                       <Edit size={13} /> 编辑
                     </button>{" "}
-                    <button type="button" className="admin-btn" onClick={() => handleRegen(v)} title="重生 teaser">
+                    <button type="button" className="admin-btn" onClick={() => handleRegen(v)} title="重生预览视频">
                       <RefreshCw size={13} />
                     </button>
                   </td>
@@ -359,8 +361,8 @@ export function VideosPage() {
       )}
       <ConfirmModal
         open={batchRegenOpen}
-        title="批量重生 Teaser"
-        message={`确定要为当前页选中的 ${selectedIds.size} 个视频重新生成 teaser 吗？`}
+        title="批量重生预览视频"
+        message={`确定要为当前页选中的 ${selectedIds.size} 个视频重新生成预览视频吗？`}
         confirmText="确认重生"
         loading={batchRegening}
         onCancel={() => {
@@ -527,7 +529,7 @@ function EditVideoModal({
           <dd>{video.driveId}</dd>
           <dt>文件信息</dt>
           <dd>{fileMeta(video) || "—"}</dd>
-          <dt>Teaser</dt>
+          <dt>预览视频</dt>
           <dd>
             <PreviewStatus s={video.previewStatus} />
           </dd>

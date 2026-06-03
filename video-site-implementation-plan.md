@@ -58,7 +58,7 @@
 - 视频卡片不是大卡片，而是紧凑信息块：封面、徽标、时长、单行标题、作者、观看量、收藏数、评论数、点赞/点踩。
 - 视觉系统主要由深色导航、黑色卡片、橙色强调色、白色文字和灰色辅助信息组成。
 - 自动预览是站内所有视频卡片的基础能力，不只是首页特效。
-- 原站同时存在两种预览机制：独立 `mp4` teaser 预览，以及旧式多张缩略图轮播。
+- 原站同时存在两种预览机制：独立 `mp4` 预览视频，以及旧式多张缩略图轮播。
 - 页面使用懒加载、返回顶部按钮、分页组件、Video.js 播放器和右侧推荐列。
 
 ## 3. 页面结构
@@ -466,14 +466,14 @@ export type CommentItem = {
 - 参考站前端不是根据完整视频时长实时裁剪预览片段。
 - 它在 hover 时直接请求一条独立的预览资源：`https://vthumb.killcovid2021.com/thumb/{videoId}.mp4`。
 - 已抽查多个预览文件，时长均为固定 `10 秒`。
-- 前端代码里没有“从第几秒开始截取”的参数，所以更像是后端预先生成好的 teaser clip。
+- 前端代码里没有“从第几秒开始截取”的参数，所以更像是后端预先生成好的预览视频片段。
 - 仅从前端代码无法百分百确认这 `10 秒` 对应完整视频的开头、中段还是后台挑选片段。
 
 我们实现时不建议照搬原脚本，而是用 React 状态和更稳的资源管理来做。
 
 ### 5.2 预览资源生成策略
 
-推荐采用“独立 teaser 文件”的方式，而不是 hover 时裁剪完整视频。
+推荐采用“独立预览视频文件”的方式，而不是 hover 时裁剪完整视频。
 
 资源规则：
 
@@ -1275,9 +1275,9 @@ src/
 
 #### 14.3.1 预览视频复用完整视频
 
-- plan 5.2 节强调预览应为独立的 10 秒 teaser 文件。
+- plan 5.2 节强调预览应为独立的 10 秒预览视频文件。
 - 当前 mock：`previewSrc === videoSrc`，都指向 Google 公开演示视频（`commondatastorage.googleapis.com/gtv-videos-bucket`）。
-- 影响：只影响 mock 数据，组件按"只加载预览 URL"工作，后端生成好独立 teaser 后，只改 `data/videos.ts` 中 `previewSrc` 即可。
+- 影响：只影响 mock 数据，组件按"只加载预览 URL"工作，后端生成好独立预览视频后，只改 `data/videos.ts` 中 `previewSrc` 即可。
 
 #### 14.3.2 "今日排行"和"最新视频"使用同一批数据
 
@@ -1411,8 +1411,8 @@ VideoProject/
 │  │  │  ├─ pikpak/            自己实现（参考 OpenList pikpak）
 │  │  │  └─ wopan/             壳 + OpenListTeam/wopan-sdk-go
 │  │  ├─ catalog/              SQLite + VideoItem 增删改查
-│  │  ├─ scanner/              扫目录 → 落库 + 异步抽 teaser
-│  │  ├─ preview/              ffmpeg 抽 10s teaser
+│  │  ├─ scanner/              扫目录 → 落库 + 异步生成预览视频
+│  │  ├─ preview/              ffmpeg 生成 10s 预览视频
 │  │  ├─ proxy/                /p/<drive>/<id> 代理下载，注入 UA/Referer/Cookie
 │  │  ├─ auth/                 管理后台鉴权
 │  │  └─ api/                  REST 路由
@@ -1431,7 +1431,7 @@ VideoProject/
 - **SDK**：
   - 夸克：移植 OpenList `drivers/quark_uc` 的 HTTP 逻辑（纯 Cookie + resty）。
   - 115：`github.com/SheltonZhu/115driver`，通过 `replace` 指令指向 `../115driver-1.3.2`。
-  - PikPak：移植 OpenList `drivers/pikpak` 的 HTTP 逻辑（用户名密码 / refresh_token + captcha_token + resty）；支持扫描和播放，teaser/封面生成产物只写本地。
+  - PikPak：移植 OpenList `drivers/pikpak` 的 HTTP 逻辑（用户名密码 / refresh_token + captcha_token + resty）；支持扫描和播放，预览视频/封面生成产物只写本地。
   - 沃盘：`github.com/OpenListTeam/wopan-sdk-go`，`replace` 指向 `../wopan-sdk-go-0.2.0`。
 - **视频处理**：ffmpeg / ffprobe，作为外部子进程调用。
 - **部署**：本地 Windows 开发，最终部署到 Linux 服务器（二进制 + systemd + nginx 反代）。
@@ -1442,7 +1442,7 @@ VideoProject/
 |---|---|
 | 登录方式 | **B**：管理后台做完整登录流程。115 扫码、夸克扫码或 Cookie 导入、沃盘手机号 + 短信验证。Token 持久化到 SQLite 并自动刷新。 |
 | 元数据来源 | **默认文件名解析**：`标题.mp4`、`标题 - 作者.mp4`，或带前缀的 `[前缀] 标题 - 作者.mp4`；前缀只用于标题清理，不作为任意标签列表入库。标签来自系统 / 用户标签匹配和目录合集规则；同时提供后台录入 API 覆盖字段 |
-| Hover teaser | **C 预生成**：scanner 发现新视频时异步生成 10s teaser 并存回网盘的 `previews/` 目录，详情页和列表页 hover 都秒开 |
+| Hover 预览视频 | **C 预生成**：scanner 发现新视频时异步生成 10s 预览视频并存回网盘的 `previews/` 目录，详情页和列表页 hover 都秒开 |
 | 部署目标 | Linux 服务器；本地 Windows 开发 |
 | 扫描策略 | 启动时全量 + 每 6 小时增量 + 支持手动触发 |
 
@@ -1460,7 +1460,7 @@ type Drive interface {
     // 返回一次性直链 + 必要的请求头。proxy 层据此回源。
     StreamURL(ctx context.Context, fileID string) (*StreamLink, error)
 
-    // 上传用于 scanner 写回 teaser 文件
+    // 上传用于 scanner 写回预览视频文件
     Upload(ctx context.Context, parentID, name string, r io.Reader, size int64) (string, error)
 }
 
@@ -1501,7 +1501,7 @@ POST /admin/api/videos/:id     # 更新元数据
 PUT  /admin/api/videos         # 新建视频（跳过扫描）
 ```
 
-### 15.6 Teaser 生成流程
+### 15.6 预览视频生成流程
 
 scanner 每次发现新视频（catalog 里没有的 fileID）时：
 
@@ -1516,7 +1516,7 @@ scanner 每次发现新视频（catalog 里没有的 fileID）时：
    - `scale=480:-2`：目标宽 480，缩减体积到 300KB-1.5MB
    - `-movflags +faststart`：让 moov atom 在文件头部，支持边下边播
 3. ffmpeg 需要带上 Drive 提供的 UA/Referer/Cookie（用 `-headers` 参数传递）
-4. teaser 写入本地 `data/previews/<videoID>.mp4`
+4. 预览视频写入本地 `data/previews/<videoID>.mp4`
 5. catalog 记录 `preview_local`，详情页/卡片返回 `previewSrc` 指向 `/p/preview/<videoID>`；旧版 `preview_file_id` 字段保留但不再用于读取
 
 失败重试 3 次，间隔指数退避。失败的记录标记 `preview_status = failed`，不再自动重试，需要后台手动重扫。
@@ -1627,11 +1627,11 @@ Linux 服务器：
 
 - **三家协议变动风险**：协议是逆向出来的，网盘方改就得跟着改。SDK 社区更新到了就 `go get` 新版本。
 - **网盘风控**：扫描频率太高、直链请求太密集可能被封。scanner 默认 QPS 限制 + 单次扫描目录数量上限。
-- **teaser/封面本地存储**：生成产物只写入本地 `data/previews/`，不再依赖网盘写权限；部署时需要把该目录纳入持久化和备份策略。
+- **预览视频/封面本地存储**：生成产物只写入本地 `data/previews/`，不再依赖网盘写权限；部署时需要把该目录纳入持久化和备份策略。
 
-### 15.12 Teaser 生成策略（已落地）
+### 15.12 预览视频生成策略（已落地）
 
-Teaser 不再是"固定从第 10 秒抽 10 秒"，改为按视频时长分段挑起点 + 三段拼接：
+预览视频不再是"固定从第 10 秒抽 10 秒"，改为按视频时长分段挑起点 + 三段拼接：
 
 - **段数**：`Config.Segments`，默认 3。视频 `< 30s` 自动降级为单段。
 - **每段时长**：`DurationSeconds / Segments`，下限 2 秒，默认 9 / 3 = 3 秒。
@@ -1641,11 +1641,11 @@ Teaser 不再是"固定从第 10 秒抽 10 秒"，改为按视频时长分段挑
   - `duration ≥ 10min` → 在 `[20%, 80%]` 区间均匀分布 N 段
 - **拼接**：每段 `scale=480:-2` 缩放，`fade-in 0.2s` + `fade-out 0.2s`，`concat` 滤镜合成单个 mp4，`libx264 crf 28 preset veryfast`，体积 500 KB - 1.5 MB。
 
-封面独立于 teaser：
+封面独立于预览视频：
 - `pickThumbnailOffset(duration)`：
   - `duration < 60s` → `duration * 0.3`
   - `duration ≥ 60s` → `clamp(duration * 0.2, 5, 120)` 秒
-- 抽帧单独走 `ffmpeg -frames:v 1`，和 teaser 起点解耦。
+- 抽帧单独走 `ffmpeg -frames:v 1`，和预览视频起点解耦。
 - 输出 `data/previews/thumbs/<videoID>.jpg`，前端走 `/p/thumb/<videoID>` 路由。
 
 前端展示（`VideoCard.tsx`）：
@@ -1906,7 +1906,7 @@ ac3 / dts / flac / opus / vorbis 一律重编 aac（音频码率小，1-2 分钟
 
 ## 16. 91 爬虫源接入（spider91，已落地，2026-05-22）
 
-把 `91VideoSpider/spider_91porn.py` 包装成一种新的 drive 类型 `spider91`，每天凌晨自动跑一次爬虫"凑够 N 个新视频"，下载视频和封面到本地，作为视频源接入现有的列表/详情/标签/teaser 流水线。
+把 `91VideoSpider/spider_91porn.py` 包装成一种新的 drive 类型 `spider91`，每天凌晨自动跑一次爬虫"凑够 N 个新视频"，下载视频和封面到本地，作为视频源接入现有的列表/详情/标签/预览视频流水线。
 
 ### 16.1 设计取舍
 
@@ -1915,10 +1915,10 @@ ac3 / dts / flac / opus / vorbis 一律重编 aac（音频码率小，1-2 分钟
 - **viewkey 做主键**：91porn 网站对每个视频的稳定标识，列表页/详情页 URL 都能拿到。`videos.id = "spider91-<driveID>-<viewkey>"`，`videos.file_id = "<viewkey>.<ext>"`，和 localupload 的 ID/FileID 解耦风格一致。
 - **视频文件后缀按 URL 真实后缀**：原本 hardcode 写 `.mp4`，但 91porn 直链的格式不固定（`.mp4` / `.flv` / 个别 `.m3u8`），盲存 `.mp4` 会让 ffmpeg 拿到错的容器结构。`detectVideoExt(url)` 解析路径扩展名，命中白名单（mp4/webm/mkv/mov/m4v/flv/avi）就用真实后缀，`.m3u8` 等流媒体清单回退 `.mp4`。`videos.ext` 字段也跟实际后缀保持一致。
 - **封面直接复用网站封面**：crawler 下载完封面后复制一份到 `data/previews/thumbs/<videoID>.jpg`，让 `/p/thumb/{videoID}` 路由不需要任何特例就能命中。同时 `videos.thumbnail_url` 设为 `/p/thumb/<videoID>`、`thumbnail_status = 'ready'`，让 thumb worker 自动跳过 spider91 视频。
-- **teaser 仍走 ffmpeg 流水线**：crawler 调 `OnNewVideo` 回调把新视频塞进当前 drive 的 preview worker 队列。
+- **预览视频仍走 ffmpeg 流水线**：crawler 调 `OnNewVideo` 回调把新视频塞进当前 drive 的 preview worker 队列。
 - **走代理下载**：91porn CDN 节点在海外，国内直连只有几 KB/s。crawler 的 `http.Client` 用 `http.ProxyFromEnvironment`（读 `HTTPS_PROXY` 环境变量），并允许在 drive credentials 里通过 `proxy` 字段显式覆盖。**这是个重要修正**：自定义 `http.Transport` 默认不带 `Proxy: http.ProxyFromEnvironment`，必须显式加，否则会忽略 `HTTPS_PROXY` 环境变量直连——这是排查中花了最多时间的坑。
 - **统一 `91porn` 标签**：所有 spider91 视频在入库时打上 `91porn` 标签。`attachSpider91Crawler` 启动时调 `Catalog.CreateTagAndClassify("91porn", nil, "system")` 同时建标签 + 给已入库的视频按 author 字段补打；新视频入库时 crawler 直接设置 `Tags: []string{"91porn"}` 让 `UpsertVideo` 自动同步 `video_tags` 表。
-- **管理后台 UI 适配**：spider91 不属于"网盘"，但复用 `/admin/drives` 页有意义（视频源、teaser、本地占用等列都通用）。做了几处 surgical 修补：状态列对 spider91 直接看 `status` 字段不要求凭证（"已就绪"/"错误"，不会显示"未配置凭证"）；操作按钮对 spider91 显示 "立即抓取"（图标 Download）而非"重扫"；表单隐藏"根目录 ID" / "扫描起点目录 ID"两行；"扫描根"列对 spider91 显示 "上次抓取 N 小时前"（`lastCrawlAt` 字段从 `drive.credentials.last_crawl_at` 提取）。
+- **管理后台 UI 适配**：spider91 不属于"网盘"，但复用 `/admin/drives` 页有意义（视频源、预览视频、本地占用等列都通用）。做了几处 surgical 修补：状态列对 spider91 直接看 `status` 字段不要求凭证（"已就绪"/"错误"，不会显示"未配置凭证"）；操作按钮对 spider91 显示 "立即抓取"（图标 Download）而非"重扫"；表单隐藏"根目录 ID" / "扫描起点目录 ID"两行；"扫描根"列对 spider91 显示 "上次抓取 N 小时前"（`lastCrawlAt` 字段从 `drive.credentials.last_crawl_at` 提取）。
 
 ### 16.2 文件改动
 
@@ -1954,7 +1954,7 @@ ac3 / dts / flac / opus / vorbis 一律重编 aac（音频码率小，1-2 分钟
 
 ### 16.5 GC 和清理
 
-- 当前**不主动清理旧视频文件**。删 spider91 drive 不会删 `data/spider91/<driveID>/` 下的文件（和云盘 drive 删除时不动 teaser 一致）
+- 当前**不主动清理旧视频文件**。删 spider91 drive 不会删 `data/spider91/<driveID>/` 下的文件（和云盘 drive 删除时不动预览视频一致）
 - 已存在 viewkey 在 Python 端通过 `--seen-viewkeys-file` 跳过（不发详情页请求），Go 端再做 `Catalog.GetVideo` 二次去重防御
 - 每次爬虫输出的 JSON 留在 `<driveDir>/.crawl/target-<N>-<UTC>.json`，对应的已知 viewkey 列表在 `<driveDir>/.crawl/seen-<UTC>.txt`，方便事后排查；磁盘吃紧可手动清理
 

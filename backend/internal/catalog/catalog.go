@@ -546,7 +546,7 @@ func (c *Catalog) ListVideosByThumbnailStatus(ctx context.Context, driveID, stat
 // Besides missing thumbnails, this includes videos with an existing thumbnail but
 // missing duration metadata, because the thumbnail worker probes duration while
 // it already has a stream link.
-// Failed thumbnails are reported separately and should not block teaser generation.
+// Failed thumbnails are reported separately and should not block preview-video generation.
 // Videos whose local assets were cleared because they are fingerprint duplicates
 // stay pending in the DB, but uniqueVideoWhereSQL keeps them out of this queue
 // while their canonical sibling still exists.
@@ -1372,7 +1372,7 @@ func (c *Catalog) ListLocalMediaRefs(ctx context.Context) ([]LocalMediaRef, erro
 
 // DuplicateAssetCleanupCandidate points at a non-canonical video in a
 // size+sampled_sha256 duplicate group that still owns generated local assets.
-// The cleanup job uses this to remove duplicate thumbnails/teasers without
+// The cleanup job uses this to remove duplicate thumbnails/preview videos without
 // touching the original cloud file or deleting the catalog row.
 type DuplicateAssetCleanupCandidate struct {
 	VideoID       string
@@ -1500,7 +1500,7 @@ type Drive struct {
 	Credentials map[string]string `json:"credentials,omitempty"`
 	Status      string            `json:"status"`
 	LastError   string            `json:"lastError,omitempty"`
-	// TeaserEnabled 控制是否给本盘生成 teaser/封面。
+	// TeaserEnabled 控制是否给本盘生成预览视频/封面。
 	// 替代早期的全局 preview.enabled 开关；新建 drive 时 UpsertDrive 默认置 true。
 	TeaserEnabled bool `json:"teaserEnabled"`
 	// SkipDirIDs 是用户在管理后台为该盘选定的"扫描跳过目录"集合（网盘侧的目录 fileID）。
@@ -1633,7 +1633,7 @@ func (c *Catalog) DeleteDrive(ctx context.Context, id string) error {
 	return err
 }
 
-// SetDriveTeaserEnabled 切换某盘的 teaser/封面生成开关。
+// SetDriveTeaserEnabled 切换某盘的预览视频/封面生成开关。
 //
 // 与 UpsertDrive 的区别：只动 teaser_enabled + updated_at 一列，不要求调用方
 // 重传 kind / name / credentials 等容易踩坑的字段。

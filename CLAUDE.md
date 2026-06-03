@@ -100,7 +100,7 @@ Important backend packages:
 - `internal/catalog`: SQLite catalog, schema migration, video metadata, settings, tags, drive records, generation status, and deduplication state. It opens SQLite with WAL and a busy timeout.
 - `internal/drives`: provider abstraction. Implementations include `quark`, `p115`, `pikpak`, `wopan`, `onedrive`, `localstorage`, `localupload`, and `spider91`.
 - `internal/scanner`: recursively lists drive directories, parses filenames/tags, upserts catalog videos, applies skip-directory rules, and enqueues newly discovered videos.
-- `internal/preview`: ffprobe/ffmpeg thumbnail and teaser generation workers. Generated assets are local files under the configured preview directory.
+- `internal/preview`: ffprobe/ffmpeg thumbnail and preview-video generation workers. Generated assets are local files under the configured preview directory.
 - `internal/fingerprint`: asynchronous sampled SHA-256 worker used for cross-drive duplicate detection.
 - `internal/proxy`: `/p/*` media serving. Some providers redirect with `302` to signed CDN URLs, while providers requiring backend-held headers are reverse-proxied with Range support.
 - `internal/api`: main API and admin API route handlers.
@@ -131,5 +131,5 @@ Docker and installer deployments rewrite config paths so data lives under `/opt/
 
 - Main-site API routes and proxy routes require authentication; only login/setup and `/api/settings/theme` are intentionally public.
 - When adding a new drive provider, implement `internal/drives.Drive`, persist any needed config through catalog/admin APIs, attach it in `cmd/server`, and decide whether `/p/stream` should redirect or reverse-proxy in `internal/proxy`.
-- Generated thumbnails and teasers are local runtime assets; do not treat them as source files.
+- Generated thumbnails and preview videos are local runtime assets; do not treat them as source files.
 - Frontend tests use Node's built-in test runner with `tsx`; TypeScript linting only checks `src` through the root `tsconfig.json`.

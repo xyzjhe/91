@@ -199,7 +199,7 @@ func main() {
 			return app.driveGenerationStatuses()
 		},
 		OnTeaserEnabledChanged: func(driveID string, enabled bool) {
-			// 从关到开时立刻补扫该盘 pending teaser，行为对齐旧的"全局开关从关到开"。
+			// 从关到开时立刻补扫该盘 pending 预览视频，行为对齐旧的"全局开关从关到开"。
 			// 关闭分支不需要做事 —— 入队前会重新查 catalog，新的 enqueue 自然停。
 			if !enabled {
 				return
@@ -242,8 +242,8 @@ func main() {
 	mountFrontend(r)
 
 	// 凌晨流水线：每天 cron_hour 触发一次，串行跑
-	//   Phase 1 扫所有非 spider91 / localupload 网盘 + 删除检测 + 入队封面/teaser
-	//   Phase 2 spider91 爬虫 + 入队 teaser
+	//   Phase 1 扫所有非 spider91 / localupload 网盘 + 删除检测 + 入队封面/预览视频
+	//   Phase 2 spider91 爬虫 + 入队预览视频
 	//   Phase 3 spider91 → 云盘迁移
 	// 也响应 admin "扫描所有网盘" 按钮（POST /admin/api/jobs/nightly/run → TriggerNow）。
 	app.nightlyRunner = nightly.New(nightly.Config{
@@ -337,9 +337,9 @@ type App struct {
 	fingerprintQueueing map[string]bool
 }
 
-// teaserEnabledForDrive 查询某个 drive 当前的 per-drive teaser 开关。
+// teaserEnabledForDrive 查询某个 drive 当前的 per-drive 预览视频开关。
 //
-// teaser 生成不再由全局 setting 控制，而是由 catalog.drives.teaser_enabled
+// 预览视频生成不再由全局 setting 控制，而是由 catalog.drives.teaser_enabled
 // 决定。任何"是否入队 preview worker"的判断都应通过这个方法读，避免把状态
 // 散落到 App 内存里和 DB 不一致。
 //
@@ -872,10 +872,10 @@ func (a *App) attachSpider91Crawler(d *catalog.Drive, drv *spider91.Driver) {
 		WorkDir:        filepath.Dir(scriptPath),
 		CommonThumbDir: a.commonThumbsDir(),
 		ProxyURL:       proxyURL,
-		// 新流程：teaser 不在每条视频入库时立即入队，而是 RunOnce 全部下完后由
+		// 新流程：预览视频不在每条视频入库时立即入队，而是 RunOnce 全部下完后由
 		// runSpider91Crawl 统一调 enqueueDriveGeneration 一次性入队。这样：
 		//   - 下载阶段不和 ffmpeg 抢 CPU/IO
-		//   - "等待 teaser 队列 idle" 在 nightly Phase 2 的语义上更直观
+		//   - "等待预览视频队列 idle" 在 nightly Phase 2 的语义上更直观
 		// 不再传 OnNewVideo（crawler 内部的回调字段保留，仅为单测计数器之用）。
 	})
 
@@ -961,7 +961,7 @@ func (a *App) enqueuePending(ctx context.Context, driveID string, w *preview.Wor
 
 func (a *App) enqueueDriveGeneration(ctx context.Context, driveID string, worker *preview.Worker, thumbWorker *preview.ThumbWorker) {
 	// 封面 worker 始终入队（与早期"全局 preview.enabled=false 时仍然生成封面"
-	// 的行为一致）；teaser worker 仅在该 drive 的 TeaserEnabled 为 true 时入队。
+	// 的行为一致）；预览视频 worker 仅在该 drive 的 TeaserEnabled 为 true 时入队。
 	// 两条队列互不等待，避免封面批量生成拖住预览视频生成。
 	if thumbWorker != nil {
 		a.enqueueThumbnails(ctx, driveID, thumbWorker)
@@ -1689,7 +1689,7 @@ func (a *App) regenFailedPreviews(ctx context.Context, driveID string) {
 }
 
 // regenFailedThumbnails 把某 drive 下 thumbnail_status=failed 的视频全部重置为
-// pending 并重新入队封面 worker。与 regenFailedPreviews 行为对称：那条管 teaser，
+// pending 并重新入队封面 worker。与 regenFailedPreviews 行为对称：那条管预览视频，
 // 这条管封面图（两个 worker 是独立队列）。
 //
 // 操作不会触发已生成失败的视频重新去网盘取流 —— 只是把 catalog 的状态翻到 pending
@@ -1806,10 +1806,10 @@ func (a *App) listSpider91DriveIDs(ctx context.Context) []string {
 	return out
 }
 
-// waitAllPreviewQueuesIdle 阻塞直到所有 drive 的封面 worker 和 teaser worker
+// waitAllPreviewQueuesIdle 阻塞直到所有 drive 的封面 worker 和预览视频 worker
 // 队列都为空且无 in-flight 任务。
 //
-// 顺序：先等所有 thumb worker，再等所有 teaser。两个队列生成时互不等待；
+// 顺序：先等所有 thumb worker，再等所有预览视频。两个队列生成时互不等待；
 // nightly 只在 phase 边界统一等待它们都 drain。
 // 若 ctx 在等待中被取消（软超时 / shutdown），立即返回 ctx.Err。
 func (a *App) waitAllPreviewQueuesIdle(ctx context.Context) error {
@@ -1909,10 +1909,10 @@ func (a *App) runSpider91Crawl(ctx context.Context, driveID string) {
 		log.Printf("[spider91] drive=%s update last_crawl_at: %v", driveID, err)
 	}
 
-	// 爬取全部完成后，统一把所有还 pending 的 teaser 入队。
-	// 这是新流水线设计：crawler 自身不再每条入库就立即触发 teaser 生成，
-	// 让"下载阶段"和"teaser 阶段"在时间上分清楚（也跟 nightly Phase 2
-	// 的"等 teaser 队列 idle"语义对齐）。enqueueDriveGeneration 内部会读
+	// 爬取全部完成后，统一把所有还 pending 的预览视频入队。
+	// 这是新流水线设计：crawler 自身不再每条入库就立即触发预览视频生成，
+	// 让"下载阶段"和"预览视频阶段"在时间上分清楚（也跟 nightly Phase 2
+	// 的"等预览视频队列 idle"语义对齐）。enqueueDriveGeneration 内部会读
 	// 该 drive 当前的 teaser_enabled，关闭时是 noop。
 	a.mu.Lock()
 	worker := a.workers[driveID]

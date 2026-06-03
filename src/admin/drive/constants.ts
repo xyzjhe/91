@@ -136,7 +136,7 @@ export function credentialHelp(kind: Kind, isEdit: boolean): string {
     case "googledrive":
       return `按 OpenList 在线 API 挂载，只需要 Google Drive refresh_token；保存时会自动刷新并保存 token。播放不走 302，会由后端带 Authorization 代理转发。${note}`;
     case "localstorage":
-      return `把服务器上的一个已有目录作为视频来源扫描。填写绝对路径，例如 /mnt/videos；系统会读取该目录及子目录中的视频，并生成封面、Teaser 和指纹。${note}`;
+      return `把服务器上的一个已有目录作为视频来源扫描。填写绝对路径，例如 /mnt/videos；系统会读取该目录及子目录中的视频，并生成封面、预览视频和指纹。${note}`;
     case "spider91":
       return "91 爬虫会把定时抓取到的视频和封面先保存到本机，并作为一个视频来源接入站点；可按服务器网络情况单独配置代理。后续流水线会把较早的视频上传到你选择的 115 / PikPak / OneDrive 目标盘。";
     default:
