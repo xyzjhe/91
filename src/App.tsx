@@ -118,12 +118,14 @@ export default function App() {
           }
         />
 
-        {/* 管理后台也需要登录 */}
+        {/* 管理后台也需要登录+管理员权限 */}
         <Route
           path="/admin"
           element={
             <RequireAuth>
-              <AdminLayout />
+              <RequireAdmin>
+                <AdminLayout />
+              </RequireAdmin>
             </RequireAuth>
           }
         >
@@ -160,26 +162,23 @@ export default function App() {
               </PageSuspense>
             }
           />
-
-          {/* 管理后台需要管理员权限 */}
           <Route
             path="theme"
             element={
-              <RequireAuth>
-                <RequireAdmin>
-                  <AdminLayout />
-                </RequireAdmin>
-              </RequireAuth>
+              <PageSuspense>
+                <ThemePage />
+              </PageSuspense>
             }
-          >
-            <Route index element={<Navigate to="/admin/drives" replace />} />
-            <Route path="drives" element={<DrivesPage />} />
-            <Route path="crawlers" element={<CrawlersPage />} />
-            <Route path="videos" element={<VideosPage />} />
-            <Route path="tags" element={<TagsPage />} />
-            <Route path="theme" element={<ThemePage />} />
-            <Route path="users" element={<UsersPage />} />
-          </Route>
+          />
+          <Route
+            path="users"
+            element={
+              <PageSuspense>
+                <UsersPage />
+              </PageSuspense>
+            }
+          />
+        </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
