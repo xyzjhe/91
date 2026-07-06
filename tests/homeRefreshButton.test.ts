@@ -70,19 +70,39 @@ test("home page refresh button shares back-to-top slot until back-to-top is visi
   assert.match(backToTopSource, /onVisibilityChange\?\.\(nextVisible\)/);
 });
 
-test("home page hides empty tag cloud and uses one empty library state", () => {
+test("home page reserves tag cloud space while tags load and uses one empty library state", () => {
   assert.match(tagCloudSource, /const visibleTags = useMemo/);
   assert.match(tagCloudSource, /typeof tag\.count !== "number" \|\| tag\.count > 0/);
-  assert.match(tagCloudSource, /if \(visibleTags\.length === 0\) return null/);
+  assert.match(tagCloudSource, /const \[loaded,\s*setLoaded\] = useState\(false\)/);
+  assert.match(tagCloudSource, /setLoaded\(true\)/);
+  assert.match(tagCloudSource, /if \(loaded && visibleTags\.length === 0\) return null/);
+  assert.match(tagCloudSource, /const loading = !loaded && visibleTags\.length === 0/);
+  assert.match(tagCloudSource, /const TAG_PLACEHOLDER_COUNT = 16;/);
+  assert.match(tagCloudSource, /className=\{`tag-cloud-container \$\{loading \? "is-loading" : ""\}`\}/);
+  assert.match(tagCloudSource, /aria-busy=\{loading \? "true" : undefined\}/);
+  assert.match(tagCloudSource, /Array\.from\(\{ length: TAG_PLACEHOLDER_COUNT \}/);
+  assert.match(tagCloudSource, /tag-chip--placeholder/);
+  assert.doesNotMatch(tagCloudSource, /setTimeout/);
   assert.match(tagCloudSource, /visibleTags\.map\(renderTag\)/);
   assert.doesNotMatch(tagCloudSource, /const row[12] = visibleTags\.filter/);
   assert.doesNotMatch(tagCloudSource, /\(\{tag\.count\}\)/);
   assert.doesNotMatch(tagCloudSource, /`\$\{tag\.count\} 个视频`/);
 
+  const tagCloudContainer = ruleBody(searchCss, ".tag-cloud-container");
+  const loadingTagCloud = ruleBody(searchCss, ".tag-cloud-container.is-loading");
+  const reservedTagCloud = ruleBody(searchCss, ".tag-cloud-container.is-reserved");
   const tagCloudRow = ruleBody(searchCss, ".tag-cloud__row");
   const tagChip = ruleBody(searchCss, ".tag-chip");
+  const tagPlaceholder = ruleBody(searchCss, ".tag-chip--placeholder");
+  assert.match(tagCloudContainer, /min-height\s*:\s*34px/);
+  assert.match(loadingTagCloud, /pointer-events\s*:\s*none/);
+  assert.match(reservedTagCloud, /mask-image\s*:\s*none/);
   assert.match(tagCloudRow, /flex-wrap\s*:\s*nowrap/);
   assert.match(tagChip, /flex\s*:\s*0 0 auto/);
+  assert.match(tagPlaceholder, /width\s*:\s*68px/);
+  assert.match(tagPlaceholder, /animation\s*:\s*tag-chip-placeholder/);
+  assert.match(searchCss, /\.tag-chip--placeholder:nth-child\(6n \+ 1\)/);
+  assert.match(searchCss, /\.tag-chip--placeholder:nth-child\(6n\)/);
 
   const searchForm = ruleBody(searchCss, ".search-panel__form");
   const searchInput = ruleBody(searchCss, ".search-panel__input");
@@ -96,6 +116,7 @@ test("home page hides empty tag cloud and uses one empty library state", () => {
   assert.match(homePageSource, /const homeLoading = rankingLoading \|\| latestLoading/);
   assert.match(homePageSource, /const hasAnyVideos = ranking\.length > 0 \|\| latest\.length > 0/);
   assert.match(homePageSource, /const showEmptyHome = !homeLoading && !hasAnyVideos/);
+  assert.match(homePageSource, /\{hasAnyVideos \? \(\s*<TagCloud \/>\s*\) : \(\s*<div className="tag-cloud-container is-reserved" aria-hidden="true" \/>\s*\)\}/);
   assert.match(homePageSource, /<SectionHeader title="随机推荐" \/>/);
   assert.match(homePageSource, /<SectionHeader title="最新视频" \/>/);
   assert.doesNotMatch(homePageSource, /随机展示/);

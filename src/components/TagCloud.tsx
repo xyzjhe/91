@@ -2,10 +2,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fetchTags, type TagItem } from "@/data/videos";
 
+const TAG_PLACEHOLDER_COUNT = 16;
+
 export function TagCloud() {
   const [params] = useSearchParams();
   const activeTag = params.get("tag");
   const [tags, setTags] = useState<TagItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const visibleTags = useMemo(
     () => tags.filter((tag) => typeof tag.count !== "number" || tag.count > 0),
@@ -14,14 +17,15 @@ export function TagCloud() {
 
   useEffect(() => {
     let active = true;
-    const timer = window.setTimeout(() => {
-      fetchTags().then((list) => {
+    fetchTags()
+      .then((list) => {
         if (active) setTags(list);
+      })
+      .finally(() => {
+        if (active) setLoaded(true);
       });
-    }, 500);
     return () => {
       active = false;
-      window.clearTimeout(timer);
     };
   }, []);
 
@@ -95,7 +99,9 @@ export function TagCloud() {
     };
   }, [visibleTags]);
 
-  if (visibleTags.length === 0) return null;
+  if (loaded && visibleTags.length === 0) return null;
+
+  const loading = !loaded && visibleTags.length === 0;
 
   const renderTag = (tag: TagItem) => (
     <Link
@@ -108,10 +114,22 @@ export function TagCloud() {
   );
 
   return (
-    <div className="tag-cloud-container" aria-label="热门标签">
+    <div
+      className={`tag-cloud-container ${loading ? "is-loading" : ""}`}
+      aria-label="热门标签"
+      aria-busy={loading ? "true" : undefined}
+    >
       <div className="tag-cloud__grid" ref={containerRef}>
         <div className="tag-cloud__row">
-          {visibleTags.map(renderTag)}
+          {loading
+            ? Array.from({ length: TAG_PLACEHOLDER_COUNT }, (_, item) => (
+                <span
+                  key={item}
+                  className="tag-chip tag-chip--placeholder"
+                  aria-hidden="true"
+                />
+              ))
+            : visibleTags.map(renderTag)}
         </div>
       </div>
     </div>

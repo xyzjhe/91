@@ -175,7 +175,11 @@ export default function HomePage() {
       <div className="container page-section home-discovery-section">
         <PromoStrip />
         <SearchPanel />
-        <TagCloud />
+        {hasAnyVideos ? (
+          <TagCloud />
+        ) : (
+          <div className="tag-cloud-container is-reserved" aria-hidden="true" />
+        )}
       </div>
 
       {showEmptyHome ? (
