@@ -505,14 +505,6 @@
     color: rgba(255, 176, 112, 0.76);
   }
 
-  :root .admin-nav__link.is-active::before,
-  :root[data-theme="dark"] .admin-nav__link.is-active::before {
-    left: 8px;
-    width: 2px;
-    opacity: 0.45;
-    box-shadow: none;
-  }
-
   :root .admin-sidebar__footer .admin-sidebar__logout:hover,
   :root[data-theme="dark"] .admin-sidebar__footer .admin-sidebar__logout:hover {
     background: rgba(241, 85, 108, 0.12);
@@ -570,13 +562,6 @@
     border-color: rgba(255, 91, 138, 0.42);
   }
 
-  :root[data-theme="pink"] .admin-nav__link.is-active::before {
-    left: 8px;
-    width: 2px;
-    opacity: 0.72;
-    box-shadow: none;
-  }
-
   :root[data-theme="pink"] .admin-sidebar__footer .admin-sidebar__logout:hover {
     background: rgba(228, 59, 92, 0.1);
     border-color: rgba(228, 59, 92, 0.22);
@@ -631,13 +616,6 @@
   :root[data-theme="sky"] .admin-nav__link.is-active .admin-nav__icon {
     background: rgba(255, 200, 61, 0.2);
     border-color: rgba(255, 200, 61, 0.58);
-  }
-
-  :root[data-theme="sky"] .admin-nav__link.is-active::before {
-    left: 8px;
-    width: 2px;
-    opacity: 0.72;
-    box-shadow: none;
   }
 
   :root[data-theme="sky"] .admin-sidebar__footer .admin-sidebar__logout:hover {

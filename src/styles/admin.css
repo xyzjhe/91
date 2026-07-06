@@ -108,9 +108,12 @@
 
 .admin-nav__link {
   display: flex;
+  align-self: center;
   align-items: center;
   justify-content: flex-start;
   gap: 10px;
+  width: fit-content;
+  max-width: 100%;
   min-height: 68px;
   padding: 10px 14px;
   border: 1px solid transparent;
@@ -191,15 +194,8 @@
 }
 
 .admin-nav__link.is-active::before {
-  content: "";
-  position: absolute;
-  left: -1px;
-  top: 14px;
-  bottom: 14px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
+  content: none;
+  display: none;
 }
 
 .admin-sidebar__footer {
@@ -2654,6 +2650,7 @@
 
   .admin-nav__link {
     display: flex;
+    align-self: center;
     flex: 0 0 auto;
     height: 34px;
     min-height: 34px;

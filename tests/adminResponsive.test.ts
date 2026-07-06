@@ -206,6 +206,17 @@ test("admin tag auto-generation setting is removed", () => {
   assert.doesNotMatch(adminCss, /admin-tag-setting-toggle/);
 });
 
+test("admin sidebar active item frame only wraps the centered option", () => {
+  const navLink = ruleBody(adminCss, ".admin-nav__link");
+  const activeMarker = ruleBody(adminCss, ".admin-nav__link.is-active::before");
+
+  assert.match(navLink, /align-self\s*:\s*center/);
+  assert.match(navLink, /width\s*:\s*fit-content/);
+  assert.match(navLink, /max-width\s*:\s*100%/);
+  assert.match(activeMarker, /content\s*:\s*none/);
+  assert.match(activeMarker, /display\s*:\s*none/);
+});
+
 test("current video list does not render the drive summary under filters", () => {
   const shell = ruleBody(adminCss, ".admin-shell");
   const navGroupLabel = ruleBody(adminCss, ".admin-nav__group-label");
