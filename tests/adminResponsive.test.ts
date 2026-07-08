@@ -87,7 +87,6 @@ test("mobile user management cards keep identity, metadata, and actions separate
   const userCard = ruleBodyByContains(css, ".admin-users-table:not(.admin-drives-table) tr");
   const ipCard = ruleBodyByContains(css, ".admin-banned-ips-table:not(.admin-drives-table) tr");
   const username = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-users-table__username");
-  const userId = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-users-table__id");
   const userRole = ruleBodyByContains(css, ".admin-users-table:not(.admin-drives-table) .admin-users-table__role");
   const userTime = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-users-table__time");
   const userActions = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-users-table__actions");
@@ -102,12 +101,14 @@ test("mobile user management cards keep identity, metadata, and actions separate
   assert.match(usersPageSource, /className="admin-table admin-banned-ips-table"/);
   assert.match(usersPageSource, /data-label="用户名"/);
   assert.match(usersPageSource, /data-label="IP 地址"/);
+  assert.doesNotMatch(usersPageSource, /<th>ID<\/th>/);
+  assert.doesNotMatch(usersPageSource, /admin-users-table__id/);
   assert.match(usersPageSource, /className="admin-btn admin-btn--small is-danger"/);
   assert.match(userCard, /grid-template-columns\s*:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(userCard, /border-radius\s*:\s*var\(--radius-sm\)/);
   assert.match(ipCard, /grid-template-columns\s*:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/);
-  assert.match(username, /grid-column\s*:\s*1\s*\/\s*9/);
-  assert.match(userId, /grid-column\s*:\s*9\s*\/\s*-1/);
+  assert.match(username, /grid-column\s*:\s*1\s*\/\s*-1/);
+  assert.match(username, /text-align\s*:\s*center/);
   assert.match(userRole, /grid-row\s*:\s*2/);
   assert.match(userRole, /justify-items\s*:\s*center/);
   assert.match(userRole, /text-align\s*:\s*center/);

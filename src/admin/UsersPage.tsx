@@ -3,12 +3,8 @@ import {
   Ban,
   CheckCircle,
   Key,
-  Plus,
-  RefreshCw,
   ShieldOff,
   Trash2,
-  Users,
-  Globe,
 } from "lucide-react";
 import * as api from "./api";
 import { useToast } from "./ToastContext";
@@ -155,45 +151,43 @@ export function UsersPage() {
 
   return (
     <div className="admin-page">
-      <div className="admin-page__header">
-        <h1 className="admin-page__title">
-          <Users size={20} /> 用户管理
-        </h1>
-        <div className="admin-page__actions">
-          <button className="admin-btn" onClick={refresh} disabled={loading}>
-            <RefreshCw size={14} /> 刷新
+      <div className="admin-users-toolbar">
+        <div className="admin-users-tabs admin-tags-filter-tabs" role="tablist" aria-label="用户分组">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "users"}
+            className={`admin-tags-filter-tab ${tab === "users" ? "is-active" : ""}`}
+            onClick={() => setTab("users")}
+          >
+            <span className="admin-tags-filter-tab__text">用户列表</span>
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "ips"}
+            className={`admin-tags-filter-tab ${tab === "ips" ? "is-active" : ""}`}
+            onClick={() => setTab("ips")}
+          >
+            <span className="admin-tags-filter-tab__text">封禁IP</span>
+          </button>
+        </div>
+        <div className="admin-users-toolbar-actions">
           {tab === "users" && (
-            <button className="admin-btn is-primary" onClick={() => setShowCreate(true)}>
-              <Plus size={14} /> 创建用户
+            <button className="admin-btn" onClick={() => setShowCreate(true)}>
+              新建用户
             </button>
           )}
         </div>
       </div>
 
-      <div className="admin-users-tabs">
-        <button
-          className={`admin-btn${tab === "users" ? " is-primary" : ""}`}
-          onClick={() => setTab("users")}
-        >
-          <Users size={14} /> 用户列表
-        </button>
-        <button
-          className={`admin-btn${tab === "ips" ? " is-primary" : ""}`}
-          onClick={() => setTab("ips")}
-        >
-          <Globe size={14} /> 封禁IP ({ips.length})
-        </button>
-      </div>
-
       {loading ? (
         <div className="admin-loading">加载中...</div>
       ) : tab === "users" ? (
-        <div className="admin-table-wrap">
+        <div className="admin-table-wrap admin-users-table-wrap">
           <table className="admin-table admin-users-table">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>用户名</th>
                 <th>角色</th>
                 <th>状态</th>
@@ -204,14 +198,11 @@ export function UsersPage() {
             <tbody>
               {users.length === 0 ? (
                 <tr className="admin-empty-row">
-                  <td className="admin-empty-cell" colSpan={6}>暂无用户</td>
+                  <td className="admin-empty-cell" colSpan={5}>暂无用户</td>
                 </tr>
               ) : (
                 users.map((u) => (
                   <tr key={u.id}>
-                    <td className="admin-users-table__id" data-label="ID">
-                      <span className="admin-users-table__id-value">#{u.id}</span>
-                    </td>
                     <td className="admin-users-table__username" data-label="用户名">
                       <span className="admin-users-table__username-value">{u.username}</span>
                     </td>
@@ -265,7 +256,7 @@ export function UsersPage() {
           </table>
         </div>
       ) : (
-        <div className="admin-table-wrap">
+        <div className="admin-table-wrap admin-users-table-wrap">
           <table className="admin-table admin-banned-ips-table">
             <thead>
               <tr>

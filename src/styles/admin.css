@@ -1656,11 +1656,35 @@
   margin-left: 6px;
 }
 
-.admin-users-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.admin-users-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
   margin-bottom: var(--space-4);
+}
+
+.admin-users-tabs {
+  grid-column: 2;
+  justify-self: center;
+}
+
+.admin-users-toolbar-actions {
+  grid-column: 3;
+  justify-self: end;
+}
+
+.admin-users-table-wrap {
+  width: min(920px, 100%);
+  margin-inline: auto;
+}
+
+.admin-users-table th,
+.admin-users-table td,
+.admin-banned-ips-table th,
+.admin-banned-ips-table td {
+  text-align: center;
+  vertical-align: middle;
 }
 
 .admin-users-table__username-value {
@@ -1668,19 +1692,10 @@
   font-weight: var(--weight-semibold);
 }
 
-.admin-users-table__id-value {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.admin-users-table__role,
-.admin-users-table__state {
-  text-align: center;
-}
-
 .admin-users-table__action-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -2998,8 +3013,14 @@
     user-select: none;
   }
 
-  .admin-users-tabs {
+  .admin-users-toolbar {
+    grid-template-columns: 1fr;
+    justify-items: center;
     margin-bottom: var(--space-3);
+  }
+
+  .admin-users-tabs {
+    grid-column: 1;
     overflow-x: auto;
     padding-bottom: 2px;
     scrollbar-width: none;
@@ -3009,10 +3030,13 @@
     display: none;
   }
 
-  .admin-users-tabs .admin-btn {
-    flex: 0 0 auto;
-    min-height: 34px;
-    padding: 0 var(--space-3);
+  .admin-users-toolbar-actions {
+    grid-column: 1;
+    justify-self: center;
+  }
+
+  .admin-users-table-wrap {
+    width: 100%;
   }
 
   .admin-users-table:not(.admin-drives-table) tbody,
@@ -3064,18 +3088,13 @@
   }
 
   .admin-users-table:not(.admin-drives-table) .admin-users-table__username {
-    grid-column: 1 / 9;
+    grid-column: 1 / -1;
     grid-row: 1;
+    justify-items: center;
+    text-align: center;
   }
 
-  .admin-users-table:not(.admin-drives-table) .admin-users-table__id {
-    grid-column: 9 / -1;
-    grid-row: 1;
-    justify-items: end;
-  }
-
-  .admin-users-table:not(.admin-drives-table) .admin-users-table__username::before,
-  .admin-users-table:not(.admin-drives-table) .admin-users-table__id::before {
+  .admin-users-table:not(.admin-drives-table) .admin-users-table__username::before {
     content: none;
     display: none;
   }
@@ -3088,20 +3107,6 @@
     font-size: 15px;
     font-weight: var(--weight-bold);
     line-height: 1.35;
-  }
-
-  .admin-users-table__id-value {
-    display: inline-flex;
-    align-items: center;
-    min-height: 22px;
-    padding: 2px 8px;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-pill);
-    background: var(--bg-elevated);
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: var(--weight-semibold);
-    line-height: 1;
   }
 
   .admin-users-table:not(.admin-drives-table) .admin-users-table__role,
