@@ -120,9 +120,14 @@ export default function HomePage() {
   const [searchItems, setSearchItems] = useState<VideoItem[]>([]);
   const [searchTotal, setSearchTotal] = useState(0);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchSort, setSearchSort] = useState<SortKey>("latest");
+  const [searchSort, setSearchSort] = useState<SortKey>("hot");
   const [searchView, setSearchView] = useState<ViewMode>("grid");
   const isMobile = useIsMobile();
+
+  const resetSearchResults = useCallback(() => {
+    setSearchPage(1);
+    setSearchSort("hot");
+  }, []);
 
   const refreshHome = useCallback(async () => {
     setRefreshing(true);
@@ -148,7 +153,7 @@ export default function HomePage() {
 
   const handleSearch = useCallback((keyword: string) => {
     const q = keyword.trim();
-    setSearchPage(1);
+    resetSearchResults();
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -162,7 +167,7 @@ export default function HomePage() {
       },
       { replace: true }
     );
-  }, [setSearchParams]);
+  }, [resetSearchResults, setSearchParams]);
 
   useEffect(() => {
     document.title = activeSearchQuery
@@ -239,6 +244,7 @@ export default function HomePage() {
 
   useEffect(() => {
     setSearchPage(1);
+    setSearchSort("hot");
   }, [activeSearchQuery, activeTag]);
 
   const displayCount = isMobile ? MOBILE_COUNT : DESKTOP_COUNT;
@@ -259,7 +265,7 @@ export default function HomePage() {
         <SearchPanel value={activeSearchQuery} onSearch={handleSearch} />
         {!hasActiveSearch && (
           hasAnyVideos || hasActiveTag ? (
-            <TagCloud linkBasePath="/" />
+            <TagCloud linkBasePath="/" onTagSelect={resetSearchResults} />
           ) : (
             <div className="tag-cloud-container is-reserved" aria-hidden="true" />
           )

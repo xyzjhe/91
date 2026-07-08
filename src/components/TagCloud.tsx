@@ -6,9 +6,10 @@ const TAG_PLACEHOLDER_COUNT = 16;
 
 type TagCloudProps = {
   linkBasePath?: string;
+  onTagSelect?: () => void;
 };
 
-export function TagCloud({ linkBasePath = "/list" }: TagCloudProps) {
+export function TagCloud({ linkBasePath = "/list", onTagSelect }: TagCloudProps) {
   const [params] = useSearchParams();
   const activeTag = params.get("tag");
   const [tags, setTags] = useState<TagItem[]>([]);
@@ -112,6 +113,7 @@ export function TagCloud({ linkBasePath = "/list" }: TagCloudProps) {
       key={tag.id}
       to={`${linkBasePath}?tag=${encodeURIComponent(tag.label)}`}
       className={`tag-chip ${activeTag === tag.label ? "is-active" : ""}`}
+      onClick={onTagSelect}
     >
       {tag.label}
     </Link>

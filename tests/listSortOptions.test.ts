@@ -28,8 +28,7 @@ function ruleBody(css: string, selector: string): string {
 }
 
 test("list page sort toolbar only exposes active sort options", () => {
-  assert.match(sortToolbarSource, /\{ key: "latest", label: "最新" \}/);
-  assert.match(sortToolbarSource, /\{ key: "hot", label: "最热" \}/);
+  assert.match(sortToolbarSource, /\{ key: "hot", label: "最热" \},\s*\{ key: "latest", label: "最新" \}/);
   assert.match(sortToolbarSource, /\{ key: "recent", label: "最近观看" \}/);
 
   for (const removed of ["本周", "最长", "高清", "精选"]) {
@@ -39,6 +38,13 @@ test("list page sort toolbar only exposes active sort options", () => {
 });
 
 test("listing page uses compact spacing after the tag cloud", () => {
+  assert.match(listingPageSource, /function ListingContent\(\{ keyword, tag \}: ListingContentProps\)/);
+  assert.match(listingPageSource, /<ListingContent key=\{`\$\{keyword\}\\n\$\{tag\}`\} keyword=\{keyword\} tag=\{tag\} \/>/);
+  assert.match(listingPageSource, /const \[sort, setSort\] = useState<SortKey>\("hot"\)/);
+  assert.match(listingPageSource, /const \[view, setView\] = useState<ViewMode>\("grid"\)/);
+  assert.match(listingPageSource, /const \[page, setPage\] = useState\(1\)/);
+  assert.doesNotMatch(listingPageSource, /sessionStorage/);
+  assert.doesNotMatch(listingPageSource, /LISTING_STATE_PREFIX|readListingState|writeListingState/);
   assert.match(listingPageSource, /className="container page-section listing-discovery-section"/);
   assert.match(listingPageSource, /className="container page-section listing-primary-section"/);
   assert.match(listingPageSource, /import \{ AdminEmptyVisual \} from "@\/admin\/AdminEmptyVisual"/);
