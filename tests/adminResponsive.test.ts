@@ -93,6 +93,10 @@ test("mobile user management cards keep identity, metadata, and actions separate
   const userStatus = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-status");
   const userStatusDot = ruleBody(css, ".admin-users-table:not(.admin-drives-table) .admin-status::before");
   const actionRow = ruleBody(css, ".admin-users-table__action-row");
+  const createUserModal = ruleBody(adminCss, ".admin-modal--user-create");
+  const createUserModalChrome = ruleBodyByContains(adminCss, ".admin-modal--user-create .admin-modal__header");
+  const createUserSelect = ruleBody(adminCss, ".admin-modal--user-create .admin-form-select");
+  const createUserSelectIcon = ruleBody(adminCss, ".admin-modal--user-create .admin-form-select__icon");
   const ipIdentity = ruleBody(css, ".admin-banned-ips-table:not(.admin-drives-table) .admin-banned-ips-table__ip");
   const ipReason = ruleBodyByContains(css, ".admin-banned-ips-table:not(.admin-drives-table) .admin-banned-ips-table__reason");
   const ipActions = ruleBody(css, ".admin-banned-ips-table:not(.admin-drives-table) .admin-banned-ips-table__actions");
@@ -103,6 +107,14 @@ test("mobile user management cards keep identity, metadata, and actions separate
   assert.match(usersPageSource, /data-label="IP 地址"/);
   assert.doesNotMatch(usersPageSource, /<th>ID<\/th>/);
   assert.doesNotMatch(usersPageSource, /admin-users-table__id/);
+  assert.match(usersPageSource, /title="创建用户"[\s\S]*?className="admin-modal--user-create"/);
+  assert.match(createUserModal, /border\s*:\s*0/);
+  assert.match(createUserModal, /box-shadow\s*:\s*none/);
+  assert.match(createUserModalChrome, /border\s*:\s*0/);
+  assert.match(createUserModalChrome, /background\s*:\s*var\(--bg-surface\)/);
+  assert.match(usersPageSource, /className="admin-form-select"[\s\S]*?<ChevronDown size=\{15\} className="admin-form-select__icon"/);
+  assert.match(createUserSelect, /padding-right\s*:\s*44px/);
+  assert.match(createUserSelectIcon, /right\s*:\s*15px/);
   assert.match(usersPageSource, /className="admin-btn admin-btn--small is-danger"/);
   assert.match(userCard, /grid-template-columns\s*:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(userCard, /border-radius\s*:\s*var\(--radius-sm\)/);

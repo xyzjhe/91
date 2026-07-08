@@ -1705,6 +1705,39 @@
   font-size: var(--font-sm);
 }
 
+.admin-modal--user-create {
+  border: 0;
+  background: var(--bg-surface);
+  box-shadow: none;
+}
+
+.admin-modal--user-create .admin-modal__header,
+.admin-modal--user-create .admin-modal__footer {
+  border: 0;
+  background: var(--bg-surface);
+}
+
+.admin-modal--user-create .admin-modal__body {
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-3);
+}
+
+.admin-modal--user-create .admin-modal__footer {
+  padding-top: var(--space-2);
+}
+
+.admin-modal--user-create .admin-form {
+  gap: var(--space-3);
+}
+
+.admin-modal--user-create .admin-form-select {
+  padding-right: 44px;
+}
+
+.admin-modal--user-create .admin-form-select__icon {
+  right: 15px;
+}
+
 .admin-empty-cell {
   padding: 24px !important;
   text-align: center !important;

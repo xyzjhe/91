@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Ban,
   CheckCircle,
+  ChevronDown,
   Key,
   ShieldOff,
   Trash2,
@@ -304,6 +305,7 @@ export function UsersPage() {
       <Modal
         open={showCreate}
         title="创建用户"
+        className="admin-modal--user-create"
         onClose={() => setShowCreate(false)}
         footer={
           <>
@@ -345,10 +347,17 @@ export function UsersPage() {
           </div>
           <div className="admin-form__row">
             <label>角色</label>
-            <select value={createRole} onChange={(e) => setCreateRole(e.target.value)}>
-              <option value="user">普通用户</option>
-              <option value="admin">管理员</option>
-            </select>
+            <div className="admin-form-select-wrap">
+              <select
+                className="admin-form-select"
+                value={createRole}
+                onChange={(e) => setCreateRole(e.target.value)}
+              >
+                <option value="user">普通用户</option>
+                <option value="admin">管理员</option>
+              </select>
+              <ChevronDown size={15} className="admin-form-select__icon" aria-hidden="true" />
+            </div>
           </div>
         </div>
       </Modal>
