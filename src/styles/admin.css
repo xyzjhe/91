@@ -3910,20 +3910,6 @@
   white-space: nowrap;
 }
 
-.admin-blacklist-canonical-btn {
-  border-color: var(--border-default);
-  background: var(--surface-2);
-  color: var(--text-secondary);
-  box-shadow: none;
-}
-
-.admin-blacklist-canonical-btn:hover {
-  border-color: var(--border-accent);
-  background: var(--accent-softer);
-  color: var(--accent);
-  box-shadow: none;
-}
-
 .admin-blacklist-unavailable {
   display: inline-flex;
   align-items: center;

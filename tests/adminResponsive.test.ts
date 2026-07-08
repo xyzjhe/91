@@ -442,16 +442,18 @@ test("blacklist cancel action uses ordinary button styling", () => {
 
 test("blacklist duplicate reason renders as a compact pill", () => {
   const pill = ruleBody(adminCss, ".admin-blacklist-reason-pill");
-  const canonicalButton = ruleBody(adminCss, ".admin-blacklist-canonical-btn");
 
   assert.match(videosPageSource, /admin-blacklist-reason-pill/);
   assert.match(videosPageSource, /重复文件/);
   assert.match(videosPageSource, /v\.canonicalVideoId/);
   assert.match(videosPageSource, /查看保留视频/);
   assert.doesNotMatch(videosPageSource, /保留视频不可用/);
+  assert.doesNotMatch(videosPageSource, /admin-blacklist-canonical-btn/);
+  assert.doesNotMatch(videosPageSource, /<ExternalLink[\s\S]*?查看保留视频/);
+  assert.match(videosPageSource, /className="admin-btn"[\s\S]*?查看保留视频/);
   assert.match(pill, /border-radius\s*:\s*999px/);
   assert.match(pill, /white-space\s*:\s*nowrap/);
-  assert.match(canonicalButton, /background\s*:\s*var\(--surface-2\)/);
+  assert.doesNotMatch(adminCss, /admin-blacklist-canonical-btn/);
 });
 
 test("blacklist source files can be deleted by one serialized background task", () => {

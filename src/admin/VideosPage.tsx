@@ -6,7 +6,6 @@ import {
   Search,
   Image,
   Trash2,
-  ExternalLink,
 } from "lucide-react";
 import * as api from "./api";
 import { useToast } from "./ToastContext";
@@ -897,11 +896,11 @@ function BlacklistTab({
                       ) : v.reason === "duplicate" ? (
                         v.canonicalVideoId && v.canonicalTitle ? (
                           <Link
-                            className="admin-btn admin-blacklist-canonical-btn"
+                            className="admin-btn"
                             to={`/video/${encodeURIComponent(v.canonicalVideoId)}`}
                             title={v.canonicalTitle}
                           >
-                            <ExternalLink size={13} /> 查看保留视频
+                            查看保留视频
                           </Link>
                         ) : null
                       ) : (
