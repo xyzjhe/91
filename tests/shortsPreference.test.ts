@@ -480,6 +480,52 @@ test("shorts sound toggle grants playback in the direct user click", () => {
   assert.match(shortsPageSource, /\}, \[muted, volume, items\.length, useIOSSharedVideo\]\);/);
 });
 
+test("Windows shorts header renders an icon-only volume control", () => {
+  assert.match(
+    shortsPageSource,
+    /const isWindowsShortsPlatform = isWindowsPlatform\(\);/
+  );
+  assert.match(
+    shortsPageSource,
+    /function isWindowsPlatform\(\) \{[\s\S]*?\/\^Win\/i\.test\(platform\) \|\| \/\\bWindows\\b\/i\.test\(ua\);/
+  );
+  assert.match(
+    shortsPageSource,
+    /\{!isWindowsShortsPlatform && \(\s*<div className="shorts-header__volume-slider-container">/
+  );
+  assert.match(
+    shortsPageSource,
+    /<button[\s\S]*?className="shorts-header__icon-btn"[\s\S]*?handleVolumeButtonClick\(\);/
+  );
+});
+
+test("Windows viewport resize keeps the current short aligned", () => {
+  assert.match(
+    shortsPageSource,
+    /const viewportResizeAnchorIndexRef = useRef<number \| null>\(null\);/
+  );
+  assert.match(
+    shortsPageSource,
+    /const handleViewportResize = \(\) => \{[\s\S]*?viewportResizeAnchorIndexRef\.current = activeIndexRef\.current;[\s\S]*?alignAnchoredSlide\(\);[\s\S]*?window\.requestAnimationFrame/
+  );
+  assert.match(
+    shortsPageSource,
+    /root\.scrollTop = activeSlide\.offsetTop;/
+  );
+  assert.match(
+    shortsPageSource,
+    /window\.addEventListener\("resize", handleViewportResize\);/
+  );
+  assert.match(
+    shortsPageSource,
+    /document\.addEventListener\("fullscreenchange", handleViewportResize\);/
+  );
+  assert.match(
+    shortsPageSource,
+    /const observer = new IntersectionObserver\(\s*\(entries\) => \{\s*if \(viewportResizeAnchorIndexRef\.current !== null\) return;/
+  );
+});
+
 test("shorts page defaults to immersive playback without fullscreen controls", () => {
   assert.match(shortsPageSource, /const activeIndexRef = useRef\(0\)/);
   assert.match(shortsCssSource, /\.shorts-page \{[\s\S]*height:\s*100svh/);

@@ -193,6 +193,9 @@ export default function ShortsPage() {
     Map<number, (el: HTMLDivElement | null) => void>
   >(new Map());
   const activeIndexRef = useRef(0);
+  // Windows 退出浏览器全屏时视口高度会改变。调整滚动位置期间锁住当前
+  // slide，避免 IntersectionObserver 把新的像素位置误判成后续视频。
+  const viewportResizeAnchorIndexRef = useRef<number | null>(null);
   const userPausedIndexRef = useRef<number | null>(null);
   const [activeReadyForPreload, setActiveReadyForPreload] = useState(false);
   const [, setUserPausedIndexState] = useState<number | null>(null);
@@ -203,6 +206,9 @@ export default function ShortsPage() {
 
   // iPhone 浏览器里改用页面滚动，让 Safari 工具栏能随刷动收起。
   const useDocumentScroll = shouldUseDocumentScrollForShorts();
+  // Windows 短视频页只保留静音图标；不挂载桌面 hover 音量条，避免点击
+  // 图标时因鼠标仍停留在按钮上而展开滑杆。
+  const isWindowsShortsPlatform = isWindowsPlatform();
   // iOS/WebKit 的有声播放授权按 media element 管理。iOS 分支始终复用
   // 同一个真实 <video>，滑动时只移动节点并更换 src。
   const useIOSSharedVideo = shouldUseIOSSharedVideo();
@@ -379,6 +385,65 @@ export default function ShortsPage() {
     }
   }, [activeIndex, items, loading, roundComplete, loadMore]);
 
+  // 全屏与窗口模式的可用高度不同。Chrome/Edge 退出全屏后会保留原来的
+  // scrollTop 像素值，而每条 slide 的 100svh 已经变矮；索引越靠后，误差
+  // 累积越大，最终会露出下一条并触发切源。视口 resize 期间始终用当前索引
+  // 的新 offsetTop 重新对齐，待尺寸稳定后再交还给正常的滑动观察器。
+  useEffect(() => {
+    if (!isWindowsShortsPlatform) return;
+    const root = containerRef.current;
+    if (!root) return;
+
+    let alignmentFrame: number | null = null;
+    let settleTimer: number | null = null;
+
+    const alignAnchoredSlide = () => {
+      const anchorIndex = viewportResizeAnchorIndexRef.current;
+      if (anchorIndex === null) return;
+      const activeSlide = root.querySelector<HTMLElement>(
+        `[data-shorts-slide][data-index="${anchorIndex}"]`
+      );
+      if (!activeSlide) return;
+      root.scrollTop = activeSlide.offsetTop;
+    };
+
+    const handleViewportResize = () => {
+      if (viewportResizeAnchorIndexRef.current === null) {
+        viewportResizeAnchorIndexRef.current = activeIndexRef.current;
+      }
+
+      // resize 事件触发时 viewport unit 通常已经更新，先同步对齐一次；下一帧
+      // 再对齐可覆盖浏览器工具栏完成布局后的第二次尺寸计算。
+      alignAnchoredSlide();
+      if (alignmentFrame !== null) {
+        window.cancelAnimationFrame(alignmentFrame);
+      }
+      alignmentFrame = window.requestAnimationFrame(() => {
+        alignmentFrame = null;
+        alignAnchoredSlide();
+      });
+
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        alignAnchoredSlide();
+        viewportResizeAnchorIndexRef.current = null;
+      }, 240);
+    };
+
+    window.addEventListener("resize", handleViewportResize);
+    document.addEventListener("fullscreenchange", handleViewportResize);
+    return () => {
+      window.removeEventListener("resize", handleViewportResize);
+      document.removeEventListener("fullscreenchange", handleViewportResize);
+      if (alignmentFrame !== null) {
+        window.cancelAnimationFrame(alignmentFrame);
+      }
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      viewportResizeAnchorIndexRef.current = null;
+    };
+  }, [isWindowsShortsPlatform]);
+
   // 用 IntersectionObserver 找出当前进入视口的 item。
   // root 直接用 viewport：普通模式和 iPhone 页面滚动模式都能正确观测。
   useEffect(() => {
@@ -387,6 +452,7 @@ export default function ShortsPage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
+        if (viewportResizeAnchorIndexRef.current !== null) return;
         let bestIndex = -1;
         let bestRatio = 0.6;
         for (const entry of entries) {
@@ -690,18 +756,20 @@ export default function ShortsPage() {
         </Link>
         <div className="shorts-header__actions">
           <div className="shorts-header__volume-group">
-            <div className="shorts-header__volume-slider-container">
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={muted ? 0 : volume}
-                onChange={handleVolumeSliderChange}
-                className="shorts-header__volume-slider"
-                aria-label="音量调节"
-              />
-            </div>
+            {!isWindowsShortsPlatform && (
+              <div className="shorts-header__volume-slider-container">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={muted ? 0 : volume}
+                  onChange={handleVolumeSliderChange}
+                  className="shorts-header__volume-slider"
+                  aria-label="音量调节"
+                />
+              </div>
+            )}
             <button
               type="button"
               className="shorts-header__icon-btn"
@@ -2557,6 +2625,13 @@ function stabilizeVideoAfterAudioToggle(
 
 function shouldUseDocumentScrollForShorts() {
   return isIPhoneBrowserShell();
+}
+
+function isWindowsPlatform() {
+  if (typeof navigator === "undefined") return false;
+  const platform = navigator.platform || "";
+  const ua = navigator.userAgent || "";
+  return /^Win/i.test(platform) || /\bWindows\b/i.test(ua);
 }
 
 function shouldUseIOSSharedVideo() {
