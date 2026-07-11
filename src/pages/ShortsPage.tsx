@@ -410,8 +410,13 @@ export default function ShortsPage() {
 
         if (resp.total === 0) {
           setEmpty(true);
-          setRoundComplete(true);
+          // 库在旧队列播放期间可能被清空。丢弃已经失效的队列并停止换轮，
+          // 否则末条视频的预取 effect 会持续请求同一个空库。
+          setItems([]);
+          setActiveIndex(0);
+          setRoundComplete(false);
           requestFeedRef.current = EMPTY_SHORTS_FEED;
+          clearShortsFeedState();
           return;
         }
 
@@ -466,6 +471,7 @@ export default function ShortsPage() {
   // 只提交真正进入当前屏的视频游标。预取但尚未观看的条目不会被跳过，刷新
   // 页面后会从当前视频之后恢复，而不是从已预取的队列末尾恢复。
   useEffect(() => {
+    if (empty) return;
     const active = items[activeIndex];
     if (!active) return;
 
@@ -485,7 +491,7 @@ export default function ShortsPage() {
       }
       void loadMore();
     }
-  }, [activeIndex, items, loading, loadError, roundComplete, loadMore]);
+  }, [activeIndex, items, loading, loadError, empty, roundComplete, loadMore]);
 
   // 全屏与窗口模式的可用高度不同。Chrome/Edge 退出全屏后会保留原来的
   // scrollTop 像素值，而每条 slide 的 100svh 已经变矮；索引越靠后，误差

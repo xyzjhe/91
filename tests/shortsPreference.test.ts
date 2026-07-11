@@ -322,7 +322,14 @@ test("shorts commits viewed cursors and waits for queue end before starting a ne
 });
 
 test("shorts distinguishes feed failures from a genuinely empty library", () => {
-  assert.match(shortsPageSource, /if \(resp\.total === 0\) \{\s*setEmpty\(true\);/);
+  assert.match(
+    shortsPageSource,
+    /if \(resp\.total === 0\) \{[\s\S]*?setEmpty\(true\);[\s\S]*?setItems\(\[\]\);[\s\S]*?setActiveIndex\(0\);[\s\S]*?setRoundComplete\(false\);[\s\S]*?requestFeedRef\.current = EMPTY_SHORTS_FEED;[\s\S]*?clearShortsFeedState\(\);[\s\S]*?return;/
+  );
+  assert.match(
+    shortsPageSource,
+    /useEffect\(\(\) => \{\s*if \(empty\) return;\s*const active = items\[activeIndex\];/
+  );
   assert.match(shortsPageSource, /catch \{\s*setLoadError\(true\);/);
   assert.match(shortsPageSource, /短视频加载失败，请检查网络后重试/);
   assert.match(shortsPageSource, /onClick=\{\(\) => void loadMore\(\)\}/);
