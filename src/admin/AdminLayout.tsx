@@ -24,6 +24,10 @@ export function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    document.title = "后台管理";
+  }, []);
+
+  useEffect(() => {
     if (!mobileMenuOpen) return;
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {

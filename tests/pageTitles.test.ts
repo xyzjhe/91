@@ -9,6 +9,10 @@ const pages = {
   upload: readFileSync(new URL("../src/pages/UploadPage.tsx", import.meta.url), "utf8"),
   shorts: readFileSync(new URL("../src/pages/ShortsPage.tsx", import.meta.url), "utf8"),
 };
+const adminLayout = readFileSync(
+  new URL("../src/admin/AdminLayout.tsx", import.meta.url),
+  "utf8"
+);
 
 test("public page document titles omit the site suffix", () => {
   for (const [name, source] of Object.entries(pages)) {
@@ -21,4 +25,11 @@ test("public page document titles omit the site suffix", () => {
   assert.match(pages.detail, /document\.title = stableDetail \? stableDetail\.title : "视频不存在"/);
   assert.match(pages.upload, /document\.title = "上传视频"/);
   assert.match(pages.shorts, /document\.title = "短视频"/);
+});
+
+test("admin layout replaces the previous public page title", () => {
+  assert.match(
+    adminLayout,
+    /useEffect\(\(\) => \{\s*document\.title = "后台管理";\s*\}, \[\]\);/
+  );
 });
