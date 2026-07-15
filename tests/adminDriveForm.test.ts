@@ -58,7 +58,12 @@ const p123QRCodeLoginSource = readFileSync(
   new URL("../src/admin/drive/P123QRCodeLogin.tsx", import.meta.url),
   "utf8"
 );
+const p115QRCodeLoginSource = readFileSync(
+  new URL("../src/admin/drive/P115QRCodeLogin.tsx", import.meta.url),
+  "utf8"
+);
 const qrLoginSources = [
+  p115QRCodeLoginSource,
   p123QRCodeLoginSource,
   readFileSync(new URL("../src/admin/drive/WopanQRCodeLogin.tsx", import.meta.url), "utf8"),
   readFileSync(new URL("../src/admin/drive/GuangYaPanQRCodeLogin.tsx", import.meta.url), "utf8"),
@@ -210,6 +215,27 @@ test("wopan drive form omits the optional family space field", () => {
     );
   assert.ok(match, "wopan credential field block should be present");
   assert.doesNotMatch(match[1], /key: "family_id"|家庭空间可选/);
+});
+
+test("p115 drive form supports qr login and manual cookie fallback", () => {
+  assertDriveTypeOption("p115", "115 网盘");
+  assert.match(driveFormSource, /P115QRCodeLogin/);
+  assert.match(driveFormSource, /form\.kind === "p115"/);
+  assert.match(p115QRCodeLoginSource, /<label>方式一<\/label>/);
+  assert.match(p115QRCodeLoginSource, /status\?\.state === "scanned"/);
+  assert.match(p115QRCodeLoginSource, /onCookie\(next\.cookie\)/);
+  assert.match(apiSource, /startP115QRLogin/);
+  assert.match(apiSource, /getP115QRStatus/);
+  assert.match(apiSource, /request<P115QRStatus>\("\/drives\/p115\/qr\/status", \{/);
+  assert.match(apiSource, /body: JSON\.stringify\(\{/);
+
+  const match =
+    /case "p115":\s*return \[([\s\S]*?)\];\s*case "p123":/.exec(
+      combinedSource
+    );
+  assert.ok(match, "p115 credential field block should be present");
+  assert.match(match[1], /key: "cookie"/);
+  assert.match(match[1], /UID=xxx; CID=xxx; SEID=xxx; KID=xxx/);
 });
 
 test("p123 drive form exposes qr login and phone or email password login", () => {

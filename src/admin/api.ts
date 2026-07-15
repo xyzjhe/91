@@ -341,6 +341,36 @@ export function deleteCrawler(id: string) {
   });
 }
 
+export type P115QRSession = {
+  uid: string;
+  time: number;
+  sign: string;
+  qrCodeUrl: string;
+  qrImageDataUrl: string;
+};
+
+export type P115QRStatus = {
+  state: "waiting" | "scanned" | "success" | "expired" | "canceled" | "error";
+  status: number;
+  statusText: string;
+  cookie?: string;
+};
+
+export function startP115QRLogin() {
+  return request<P115QRSession>("/drives/p115/qr", { method: "POST" });
+}
+
+export function getP115QRStatus(session: Pick<P115QRSession, "uid" | "time" | "sign">) {
+  return request<P115QRStatus>("/drives/p115/qr/status", {
+    method: "POST",
+    body: JSON.stringify({
+      uid: session.uid,
+      time: session.time,
+      sign: session.sign,
+    }),
+  });
+}
+
 export type P123QRSession = {
   loginUuid: string;
   uniID: string;

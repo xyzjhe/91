@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -1974,6 +1975,144 @@ func TestHandleImportCrawlerScriptURLRejectsNonPython(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), ".py") {
 		t.Fatalf("body = %s, want .py error", rr.Body.String())
+	}
+}
+
+type p115QRRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f p115QRRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func p115QRJSONResponse(req *http.Request, body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}
+}
+
+func TestHandleP115QRStart(t *testing.T) {
+	client := &http.Client{Transport: p115QRRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "qrcodeapi.115.com" || req.URL.Path != "/api/1.0/web/1.0/token" {
+			t.Fatalf("unexpected upstream request: %s", req.URL.String())
+		}
+		return p115QRJSONResponse(req, `{
+			"state":1,
+			"code":0,
+			"data":{
+				"uid":"qr-uid",
+				"time":1784127027,
+				"sign":"qr-sign",
+				"qrcode":"https://115.com/scan/dg-qr-uid"
+			}
+		}`), nil
+	})}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/drives/p115/qr", nil)
+	rr := httptest.NewRecorder()
+	(&AdminServer{P115QRHTTPClient: client}).handleP115QRStart(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", rr.Header().Get("Cache-Control"))
+	}
+	var got struct {
+		UID            string `json:"uid"`
+		Time           int64  `json:"time"`
+		Sign           string `json:"sign"`
+		QRCodeURL      string `json:"qrCodeUrl"`
+		QRImageDataURL string `json:"qrImageDataUrl"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.UID != "qr-uid" || got.Time != 1784127027 || got.Sign != "qr-sign" || got.QRCodeURL != "https://115.com/scan/dg-qr-uid" {
+		t.Fatalf("response = %#v", got)
+	}
+	if !strings.HasPrefix(got.QRImageDataURL, "data:image/png;base64,") {
+		t.Fatalf("qr image = %q", got.QRImageDataURL)
+	}
+}
+
+func TestHandleP115QRStatusUsesPOSTBodyAndReturnsCookie(t *testing.T) {
+	upstreamCalls := 0
+	client := &http.Client{Transport: p115QRRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		upstreamCalls++
+		switch req.URL.Host + req.URL.Path {
+		case "qrcodeapi.115.com/get/status/":
+			if req.URL.Query().Get("uid") != "qr-uid" || req.URL.Query().Get("sign") != "qr-sign" {
+				t.Fatalf("status query = %s", req.URL.RawQuery)
+			}
+			return p115QRJSONResponse(req, `{"state":1,"code":0,"data":{"status":2}}`), nil
+		case "passportapi.115.com/app/1.0/web/1.0/login/qrcode":
+			return p115QRJSONResponse(req, `{
+				"state":1,
+				"code":0,
+				"data":{"cookie":{"UID":"user-uid","CID":"cid","SEID":"seid","KID":"kid"}}
+			}`), nil
+		default:
+			t.Fatalf("unexpected upstream request: %s", req.URL.String())
+			return nil, nil
+		}
+	})}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/admin/api/drives/p115/qr/status",
+		strings.NewReader(`{"uid":"qr-uid","time":1784127027,"sign":"qr-sign"}`),
+	)
+	if req.URL.RawQuery != "" {
+		t.Fatalf("admin status request unexpectedly contains query: %s", req.URL.RawQuery)
+	}
+	rr := httptest.NewRecorder()
+	(&AdminServer{P115QRHTTPClient: client}).handleP115QRStatus(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", rr.Header().Get("Cache-Control"))
+	}
+	var got struct {
+		State  string `json:"state"`
+		Status int    `json:"status"`
+		Cookie string `json:"cookie"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.State != "success" || got.Status != 2 || got.Cookie != "UID=user-uid;CID=cid;SEID=seid;KID=kid" {
+		t.Fatalf("response = %#v", got)
+	}
+	if upstreamCalls != 2 {
+		t.Fatalf("upstream calls = %d, want 2", upstreamCalls)
+	}
+}
+
+func TestHandleP115QRStatusRejectsIncompleteSession(t *testing.T) {
+	upstreamCalls := 0
+	client := &http.Client{Transport: p115QRRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		upstreamCalls++
+		return p115QRJSONResponse(req, `{}`), nil
+	})}
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/admin/api/drives/p115/qr/status",
+		strings.NewReader(`{"uid":"qr-uid","time":1784127027}`),
+	)
+	rr := httptest.NewRecorder()
+	(&AdminServer{P115QRHTTPClient: client}).handleP115QRStatus(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if upstreamCalls != 0 {
+		t.Fatalf("upstream calls = %d, want 0", upstreamCalls)
 	}
 }
 
