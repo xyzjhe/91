@@ -22,6 +22,7 @@ import (
 	"github.com/video-site/backend/internal/catalog"
 	"github.com/video-site/backend/internal/drives"
 	"github.com/video-site/backend/internal/mediaasset"
+	"github.com/video-site/backend/internal/streamhttp"
 )
 
 type Config struct {
@@ -824,6 +825,12 @@ func shouldProxyFFmpegLink(link *drives.StreamLink) bool {
 	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 		return false
 	}
+	// FFmpeg forwards custom Authorization/Cookie headers to redirect targets.
+	// Keep protected first-hop links behind our loopback proxy so redirects are
+	// followed with the shared cross-origin credential policy instead.
+	if link.PassThroughRedirects {
+		return true
+	}
 	if strings.Contains(raw, "115cdn") {
 		return true
 	}
@@ -836,6 +843,9 @@ func startLocalFFmpegProxy(ctx context.Context, link *drives.StreamLink) (*drive
 		return nil, nil, err
 	}
 	client := &http.Client{Timeout: 0}
+	if link.PassThroughRedirects {
+		client = streamhttp.NewClient(0)
+	}
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/stream" {
@@ -903,6 +913,7 @@ func startLocalFFmpegProxy(ctx context.Context, link *drives.StreamLink) (*drive
 	proxied := *link
 	proxied.URL = "http://" + ln.Addr().String() + "/stream"
 	proxied.Headers = nil
+	proxied.PassThroughRedirects = false
 	return &proxied, cleanup, nil
 }
 

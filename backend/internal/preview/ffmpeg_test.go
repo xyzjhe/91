@@ -3,8 +3,10 @@ package preview
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,7 +269,103 @@ func TestShouldProxy115FFmpegLinks(t *testing.T) {
 	if !shouldProxyFFmpegLink(&drives.StreamLink{URL: "https://cdnfhnfile.115cdn.net/file.mp4"}) {
 		t.Fatal("115 CDN link should use local ffmpeg proxy")
 	}
+	if !shouldProxyFFmpegLink(&drives.StreamLink{
+		URL:                  "https://webdav.example/dav/file.mp4",
+		PassThroughRedirects: true,
+	}) {
+		t.Fatal("redirect-passthrough link should use local ffmpeg proxy")
+	}
 	if shouldProxyFFmpegLink(&drives.StreamLink{URL: "https://download.example/file.mp4"}) {
 		t.Fatal("generic link should not use local ffmpeg proxy")
+	}
+}
+
+func TestPrepareFFmpegLinkDoesNotLeakWebDAVCredentialsToRedirectTarget(t *testing.T) {
+	originRequests := make(chan http.Header, 1)
+	targetRequests := make(chan http.Header, 1)
+
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetRequests <- r.Header.Clone()
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Range", "bytes 2-5/10")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, "2345")
+	}))
+	t.Cleanup(target.Close)
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		originRequests <- r.Header.Clone()
+		w.Header().Set("Location", target.URL+"/video.mp4")
+		w.WriteHeader(http.StatusFound)
+	}))
+	t.Cleanup(origin.Close)
+
+	link := &drives.StreamLink{
+		URL: origin.URL + "/dav/video.mp4",
+		Headers: http.Header{
+			"Authorization":       {"Basic webdav-secret"},
+			"Cookie":              {"session=webdav-secret"},
+			"Proxy-Authorization": {"Basic proxy-secret"},
+			"User-Agent":          {"video-site-webdav"},
+		},
+		PassThroughRedirects: true,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	proxied, cleanup, err := prepareFFmpegLink(ctx, link)
+	if err != nil {
+		t.Fatalf("prepare ffmpeg link: %v", err)
+	}
+	t.Cleanup(cleanup)
+	if proxied.URL == link.URL {
+		t.Fatal("ffmpeg link was not replaced with a loopback proxy URL")
+	}
+	if proxied.Headers != nil {
+		t.Fatalf("proxied headers = %#v, want nil", proxied.Headers)
+	}
+	if proxied.PassThroughRedirects {
+		t.Fatal("loopback ffmpeg link should not expose upstream redirect semantics")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, proxied.URL, nil)
+	if err != nil {
+		t.Fatalf("new loopback request: %v", err)
+	}
+	req.Header.Set("Range", "bytes=2-5")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request loopback proxy: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read loopback response: %v", err)
+	}
+	if resp.StatusCode != http.StatusPartialContent || string(body) != "2345" {
+		t.Fatalf("response = status %d body %q", resp.StatusCode, body)
+	}
+
+	originHeaders := <-originRequests
+	targetHeaders := <-targetRequests
+	if got := originHeaders.Get("Authorization"); got != "Basic webdav-secret" {
+		t.Fatalf("origin Authorization = %q, want WebDAV credentials", got)
+	}
+	if got := originHeaders.Get("Cookie"); got != "session=webdav-secret" {
+		t.Fatalf("origin Cookie = %q, want WebDAV cookie", got)
+	}
+	if got := originHeaders.Get("Range"); got != "bytes=2-5" {
+		t.Fatalf("origin Range = %q, want bytes=2-5", got)
+	}
+	for _, name := range []string{"Authorization", "Proxy-Authorization", "Cookie", "Referer"} {
+		if got := targetHeaders.Get(name); got != "" {
+			t.Fatalf("%s leaked to redirect target: %q", name, got)
+		}
+	}
+	if got := targetHeaders.Get("Range"); got != "bytes=2-5" {
+		t.Fatalf("target Range = %q, want bytes=2-5", got)
+	}
+	if got := targetHeaders.Get("User-Agent"); got != "video-site-webdav" {
+		t.Fatalf("target User-Agent = %q, want video-site-webdav", got)
 	}
 }
