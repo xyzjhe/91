@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchHomeVideos, fetchListing } from "../src/data/videos";
+import {
+  fetchHomeVideos,
+  fetchListing,
+  fetchTags,
+  readCachedTags,
+} from "../src/data/videos";
 
 test("home recommendations send only the requested display count", async (t) => {
   const originalFetch = globalThis.fetch;
@@ -140,4 +145,29 @@ test("listing request failures are not converted to an empty library", async (t)
     /HTTP 401/
   );
   assert.equal(calls, 1);
+});
+
+test("tags stay cached for the current browser session", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  const responseTags = [{ id: "tag-1", label: "标签一", count: 3 }];
+  globalThis.fetch = (async (input) => {
+    calls += 1;
+    assert.equal(String(input), "/api/tags");
+    return new Response(JSON.stringify(responseTags), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const firstResult = await fetchTags();
+  const secondResult = await fetchTags();
+
+  assert.equal(calls, 1);
+  assert.deepEqual(firstResult, responseTags);
+  assert.strictEqual(secondResult, firstResult);
+  assert.strictEqual(readCachedTags(), firstResult);
 });

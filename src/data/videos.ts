@@ -106,21 +106,21 @@ export function uploadVideo(input: UploadVideoInput): Promise<VideoItem> {
 
 export type TagItem = { id: string; label: string; count?: number };
 
-const TAG_CACHE_TTL_MS = 30_000;
 let cachedTags: TagItem[] | null = null;
-let cachedTagsAt = 0;
 let pendingTags: Promise<TagItem[]> | null = null;
 
+export function readCachedTags(): TagItem[] | null {
+  return cachedTags;
+}
+
 export function fetchTags(): Promise<TagItem[]> {
-  const now = Date.now();
-  if (cachedTags && now - cachedTagsAt < TAG_CACHE_TTL_MS) {
+  if (cachedTags !== null) {
     return Promise.resolve(cachedTags);
   }
   if (pendingTags) return pendingTags;
   pendingTags = apiGet<TagItem[]>("/api/tags")
     .then((tags) => {
       cachedTags = tags;
-      cachedTagsAt = Date.now();
       return tags;
     })
     .catch(() => cachedTags ?? [])

@@ -94,7 +94,10 @@ test("home page reuses the cached latest batch when returning from detail", () =
 test("home page reserves tag cloud space while tags load and uses one empty library state", () => {
   assert.match(tagCloudSource, /const visibleTags = useMemo/);
   assert.match(tagCloudSource, /typeof tag\.count !== "number" \|\| tag\.count > 0/);
-  assert.match(tagCloudSource, /const \[loaded,\s*setLoaded\] = useState\(false\)/);
+  assert.match(tagCloudSource, /const initialTagsRef = useRef<TagItem\[\] \| null>\(readCachedTags\(\)\)/);
+  assert.match(tagCloudSource, /const \[tags,\s*setTags\] = useState<TagItem\[\]>\(initialTagsRef\.current \?\? \[\]\)/);
+  assert.match(tagCloudSource, /const \[loaded,\s*setLoaded\] = useState\(initialTagsRef\.current !== null\)/);
+  assert.match(tagCloudSource, /if \(initialTagsRef\.current !== null\) return/);
   assert.match(tagCloudSource, /setLoaded\(true\)/);
   assert.match(tagCloudSource, /if \(loaded && visibleTags\.length === 0\) return null/);
   assert.match(tagCloudSource, /const loading = !loaded && visibleTags\.length === 0/);

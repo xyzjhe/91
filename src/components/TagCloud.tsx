@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { fetchTags, type TagItem } from "@/data/videos";
+import { fetchTags, readCachedTags, type TagItem } from "@/data/videos";
 
 const TAG_PLACEHOLDER_COUNT = 16;
 
@@ -12,8 +12,9 @@ type TagCloudProps = {
 export function TagCloud({ linkBasePath = "/list", onTagSelect }: TagCloudProps) {
   const [params] = useSearchParams();
   const activeTag = params.get("tag");
-  const [tags, setTags] = useState<TagItem[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const initialTagsRef = useRef<TagItem[] | null>(readCachedTags());
+  const [tags, setTags] = useState<TagItem[]>(initialTagsRef.current ?? []);
+  const [loaded, setLoaded] = useState(initialTagsRef.current !== null);
   const containerRef = useRef<HTMLDivElement>(null);
   const visibleTags = useMemo(
     () => tags.filter((tag) => typeof tag.count !== "number" || tag.count > 0),
@@ -21,6 +22,8 @@ export function TagCloud({ linkBasePath = "/list", onTagSelect }: TagCloudProps)
   );
 
   useEffect(() => {
+    if (initialTagsRef.current !== null) return;
+
     let active = true;
     fetchTags()
       .then((list) => {
