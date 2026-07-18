@@ -80,13 +80,17 @@ func (a *App) attachExistingDrives(ctx context.Context) {
 }
 
 func (a *App) recordPlaybackDriveStatus(driveID, status, lastError string) {
+	a.recordDriveRuntimeStatus(driveID, status, lastError)
+}
+
+func (a *App) recordDriveRuntimeStatus(driveID, status, lastError string) {
 	if a == nil || a.cat == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := a.cat.SetDriveRuntimeStatus(ctx, driveID, status, lastError); err != nil {
-		log.Printf("[drive %s] persist playback status %s: %v", driveID, status, err)
+		log.Printf("[drive %s] persist runtime status %s: %v", driveID, status, err)
 	}
 }
 
@@ -1058,7 +1062,20 @@ func (a *App) detachDrive(id string) {
 // 走标准 List + IsDir 过滤 —— 它们的根目录通常不会有几万个文件。
 //
 // drive 未挂载（如凭证错误未通过 Init）时返回 error；前端展示 5xx 给用户。
-func (a *App) listDriveDirChildren(ctx context.Context, driveID, parentID string) ([]api.DriveDirEntry, error) {
+func (a *App) listDriveDirChildren(ctx context.Context, driveID, parentID string) (children []api.DriveDirEntry, resultErr error) {
+	defer func() {
+		// Closing the directory picker (or navigating away) cancels its request;
+		// that says nothing about the provider's connection state.
+		if errors.Is(resultErr, context.Canceled) {
+			return
+		}
+		if resultErr != nil {
+			a.recordDriveRuntimeStatus(driveID, "error", resultErr.Error())
+			return
+		}
+		a.recordDriveRuntimeStatus(driveID, "ok", "")
+	}()
+
 	drv, ok := a.registry.Get(driveID)
 	if !ok {
 		return nil, fmt.Errorf("drive %s not attached", driveID)

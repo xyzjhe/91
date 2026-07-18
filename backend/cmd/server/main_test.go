@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -48,6 +49,64 @@ func TestGuangYaPanLegacyRootPath(t *testing.T) {
 	}
 	if got := guangYaPanLegacyRootPath("folder-id", credentials); got != "" {
 		t.Fatalf("root ID should take precedence, legacy path = %q", got)
+	}
+}
+
+func TestListDriveDirChildrenPersistsFailureAndRecovery(t *testing.T) {
+	ctx := context.Background()
+	cat, err := catalog.Open(filepath.Join(t.TempDir(), "catalog.db"))
+	if err != nil {
+		t.Fatalf("open catalog: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cat.Close(); err != nil {
+			t.Fatalf("close catalog: %v", err)
+		}
+	})
+	if err := cat.UpsertDrive(ctx, &catalog.Drive{
+		ID:     "drive-id",
+		Kind:   "fake",
+		Name:   "Fake Drive",
+		RootID: "root",
+		Status: "ok",
+	}); err != nil {
+		t.Fatalf("seed drive: %v", err)
+	}
+
+	drv := &serverListResultDrive{err: errors.New("token expired")}
+	registry := proxy.NewRegistry()
+	registry.Set("drive-id", drv)
+	app := &App{cat: cat, registry: registry}
+
+	if _, err := app.listDriveDirChildren(ctx, "drive-id", ""); err == nil {
+		t.Fatal("list directory succeeded, want provider error")
+	}
+	got, err := cat.GetDrive(ctx, "drive-id")
+	if err != nil {
+		t.Fatalf("get drive after failure: %v", err)
+	}
+	if got.Status != "error" || !strings.Contains(got.LastError, "token expired") {
+		t.Fatalf("status=%q lastError=%q, want error containing provider failure", got.Status, got.LastError)
+	}
+
+	drv.err = nil
+	drv.entries = []drives.Entry{
+		{ID: "folder-id", Name: "Movies", IsDir: true},
+		{ID: "file-id", Name: "clip.mp4", IsDir: false},
+	}
+	children, err := app.listDriveDirChildren(ctx, "drive-id", "")
+	if err != nil {
+		t.Fatalf("list directory after recovery: %v", err)
+	}
+	if len(children) != 1 || children[0].ID != "folder-id" {
+		t.Fatalf("children = %#v, want only the directory", children)
+	}
+	got, err = cat.GetDrive(ctx, "drive-id")
+	if err != nil {
+		t.Fatalf("get drive after recovery: %v", err)
+	}
+	if got.Status != "ok" || got.LastError != "" {
+		t.Fatalf("status=%q lastError=%q, want recovered ok status", got.Status, got.LastError)
 	}
 }
 
@@ -2436,6 +2495,16 @@ type serverFakeKindDrive struct {
 
 func (d *serverFakeKindDrive) Kind() string { return d.kind }
 func (d *serverFakeKindDrive) ID() string   { return d.id }
+
+type serverListResultDrive struct {
+	serverFakeDrive
+	entries []drives.Entry
+	err     error
+}
+
+func (d *serverListResultDrive) List(context.Context, string) ([]drives.Entry, error) {
+	return d.entries, d.err
+}
 
 type serverRemovableFakeDrive struct {
 	serverFakeDrive
