@@ -1043,7 +1043,7 @@ function BlacklistTab({
           removeTarget
             ? removeTarget.restorePolicy === "crawler"
               ? `确定取消拉黑「${removeTarget.fileName || removeTarget.id}」吗？此操作不会立即运行爬虫，将在下次爬虫任务时生效。`
-              : `确定取消拉黑「${removeTarget.fileName || removeTarget.id}」吗？此操作不会立即扫盘，将在下次手动或定时扫盘时生效。`
+              : `确定取消拉黑「${removeTarget.fileName || removeTarget.id}」吗？视频将在下次扫盘时恢复`
             : ""
         }
         confirmText="取消拉黑"

@@ -562,7 +562,8 @@ test("blacklist cancel action uses ordinary button styling", () => {
   assert.match(videosPageSource, /v\.restorePolicy !== "none"/);
   assert.match(videosPageSource, /取消拉黑/);
   assert.doesNotMatch(videosPageSource, /重新入库/);
-  assert.match(videosPageSource, /此操作不会立即扫盘/);
+  assert.match(videosPageSource, /视频将在下次扫盘时恢复/);
+  assert.doesNotMatch(videosPageSource, /此操作不会立即扫盘/);
   assert.match(videosPageSource, /此操作不会立即运行爬虫/);
   assert.match(videosPageSource, /v\.sourceDeleted/);
   assert.match(videosPageSource, /v\.driveId === "local-upload"/);
