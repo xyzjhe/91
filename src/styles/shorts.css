@@ -535,6 +535,11 @@ body.shorts-document-scroll::before {
   transform: scale(0.85);
 }
 
+.shorts-slide__action:disabled {
+  opacity: 0.58;
+  cursor: wait;
+}
+
 .shorts-slide__action:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.35);
@@ -555,20 +560,6 @@ body.shorts-document-scroll::before {
   0% { transform: scale(1); }
   50% { transform: scale(1.22); }
   100% { transform: scale(1); }
-}
-
-/* 操作计数标签 */
-.shorts-slide__action-count {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-  white-space: nowrap;
-  pointer-events: none;
 }
 
 /* ---------- 双击点赞的心形飞起动画 ---------- */

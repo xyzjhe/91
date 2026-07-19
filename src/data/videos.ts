@@ -1,5 +1,18 @@
 import type { VideoDetail, VideoItem, VideoSubtitle } from "@/types";
 
+export type VideoShareClaim = {
+  shareId: string;
+  expiresAt: string;
+  video: VideoDetail;
+};
+
+export class VideoShareUnavailableError extends Error {
+  constructor(readonly status: number) {
+    super("Video share unavailable");
+    this.name = "VideoShareUnavailableError";
+  }
+}
+
 // 真实后端接口调用。未配置网盘时，各接口返回空数据。
 export async function fetchHomeVideos(count?: number): Promise<VideoItem[]> {
   // 整库随机轮次由服务端按登录会话维护；前端只需告知本次展示数量。
@@ -47,6 +60,76 @@ export function fetchVideoSubtitles(id: string): Promise<VideoSubtitle[]> {
   return apiGet<VideoSubtitle[]>(
     `/api/video/${encodeURIComponent(id)}/subtitles`
   ).catch(() => []);
+}
+
+export function createVideoShare(id: string): Promise<{ url: string }> {
+  return apiJSON<{ url: string }>(
+    `/api/video/${encodeURIComponent(id)}/share`,
+    { method: "POST" }
+  );
+}
+
+// React StrictMode 会在开发环境重复运行 effect。共享同一个领取 Promise，
+// 避免两个并发 POST 用不同 cookie 抢占同一条一次性链接。
+const pendingVideoShareClaims = new Map<string, Promise<VideoShareClaim>>();
+
+export function consumeVideoShare(token: string): Promise<VideoShareClaim> {
+  const existing = pendingVideoShareClaims.get(token);
+  if (existing) return existing;
+
+  const request = fetch("/api/share/consume", {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ token }),
+  })
+    .then(async (res) => {
+      if (res.status === 404 || res.status === 410) {
+        throw new VideoShareUnavailableError(res.status);
+      }
+      if (!res.ok) throw new HTTPStatusError(res.status);
+      const result = (await res.json()) as VideoShareClaim;
+      if (
+        !result ||
+        typeof result.shareId !== "string" ||
+        !result.shareId ||
+        typeof result.expiresAt !== "string" ||
+        !result.video ||
+        typeof result.video.videoSrc !== "string"
+      ) {
+        throw new Error("Invalid video share response");
+      }
+      return result;
+    })
+    .finally(() => {
+      if (pendingVideoShareClaims.get(token) === request) {
+        pendingVideoShareClaims.delete(token);
+      }
+    });
+
+  pendingVideoShareClaims.set(token, request);
+  return request;
+}
+
+export function fetchSharedVideoSubtitles(
+  shareId: string
+): Promise<VideoSubtitle[]> {
+  return apiGet<VideoSubtitle[]>(
+    `/api/share/${encodeURIComponent(shareId)}/subtitles`
+  ).catch(() => []);
+}
+
+export function recordSharedVideoView(
+  shareId: string
+): Promise<{ views: number }> {
+  return apiJSON<{ views: number }>(
+    `/api/share/${encodeURIComponent(shareId)}/view`,
+    { method: "POST" }
+  );
 }
 
 export function updateVideoTags(

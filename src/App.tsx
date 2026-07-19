@@ -11,6 +11,7 @@ const ListingPage = lazy(() => import("@/pages/ListingPage"));
 const ShortsPage = lazy(() => import("@/pages/ShortsPage"));
 const UploadPage = lazy(() => import("@/pages/UploadPage"));
 const VideoDetailPage = lazy(() => import("@/pages/VideoDetailPage"));
+const SharedVideoPage = lazy(() => import("@/pages/SharedVideoPage"));
 
 const LoginPage = lazy(() =>
   import("@/admin/LoginPage").then((module) => ({ default: module.LoginPage }))
@@ -62,6 +63,16 @@ export default function App() {
           element={
             <PageSuspense>
               <LoginPage />
+            </PageSuspense>
+          }
+        />
+
+        {/* 一次性分享页公开；具体视频和媒体请求由分享会话单独鉴权。 */}
+        <Route
+          path="/share"
+          element={
+            <PageSuspense>
+              <SharedVideoPage />
             </PageSuspense>
           }
         />

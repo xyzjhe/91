@@ -157,6 +157,23 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     expires_at INTEGER NOT NULL
 );
 
+-- 一次性视频分享。token_hash 只保存分享令牌摘要；首次领取时原子写入
+-- session_hash，此后只有持有对应 HttpOnly cookie 的浏览器可以继续播放。
+CREATE TABLE IF NOT EXISTS video_shares (
+    id                 TEXT PRIMARY KEY,
+    token_hash         TEXT NOT NULL UNIQUE,
+    video_id           TEXT NOT NULL,
+    created_at         INTEGER NOT NULL,
+    consumed_at        INTEGER NOT NULL DEFAULT 0,
+    session_hash       TEXT NOT NULL DEFAULT '',
+    session_expires_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_video_shares_video
+    ON video_shares(video_id);
+CREATE INDEX IF NOT EXISTS idx_video_shares_session
+    ON video_shares(id, session_hash, session_expires_at);
+
 -- 管理后台登录永久封禁 IP
 CREATE TABLE IF NOT EXISTS banned_login_ips (
     ip         TEXT PRIMARY KEY,

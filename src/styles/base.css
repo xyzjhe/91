@@ -20,7 +20,7 @@ html {
   /* 让锚点跳转有平滑动画，但尊重系统 reduce-motion */
   scroll-behavior: smooth;
   scrollbar-gutter: stable;
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

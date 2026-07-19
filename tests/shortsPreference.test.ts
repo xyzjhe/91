@@ -14,6 +14,10 @@ const videosDataSource = readFileSync(
   new URL("../src/data/videos.ts", import.meta.url),
   "utf8"
 );
+const shareClipboardSource = readFileSync(
+  new URL("../src/lib/videoShareClipboard.ts", import.meta.url),
+  "utf8"
+);
 
 test("shorts does not keep recommendation preference from likes or watch time", () => {
   assert.doesNotMatch(shortsPageSource, /currentTime\s*>=\s*3/);
@@ -453,6 +457,38 @@ test("shorts hide action is icon-only and advances without a toast", () => {
   );
 });
 
+test("shorts creates and copies the existing one-time video share", () => {
+  assert.match(
+    shortsPageSource,
+    /copyExistingVideoShareURL,[\s\S]*?createAndCopyVideoShare/
+  );
+  assert.match(
+    shortsPageSource,
+    /async function handleShareClick[\s\S]*?createAndCopyVideoShare\(item\.id\)[\s\S]*?pendingShareURLRef\.current = result\.url[\s\S]*?showHud\("请再次点击分享按钮"\)[\s\S]*?showHud\("一次性分享链接已复制"\)/
+  );
+  assert.match(
+    shortsPageSource,
+    /aria-label="生成并复制一次性分享链接"[\s\S]*?disabled=\{isSharing\}[\s\S]*?onClick=\{handleShareClick\}[\s\S]*?<Share2 size=\{22\} \/>/
+  );
+  assert.match(
+    shortsPageSource,
+    /copyExistingVideoShareURL\(pendingShareURLRef\.current\)/
+  );
+  assert.match(shareClipboardSource, /navigator\.clipboard\?\.writeText/);
+  assert.match(shareClipboardSource, /document\.execCommand\("copy"\)/);
+  assert.match(
+    videosDataSource,
+    /`\/api\/video\/\$\{encodeURIComponent\(id\)\}\/share`/
+  );
+  assert.doesNotMatch(shortsPageSource, /\/shorts\/share|ShortsSharePage/);
+});
+
+test("shorts like action does not display a count", () => {
+  assert.doesNotMatch(shortsPageSource, /shorts-slide__action-count/);
+  assert.doesNotMatch(shortsPageSource, /function formatCount\(/);
+  assert.doesNotMatch(shortsCssSource, /\.shorts-slide__action-count/);
+});
+
 test("shorts keeps buffered sources inside a six video window", () => {
   assert.match(shortsPageSource, /const \[cacheableSourceIds, setCacheableSourceIds\] = useState<Set<string>>/);
   assert.match(shortsPageSource, /setCacheableSourceIds\(\(prev\) => \{/);
@@ -585,7 +621,7 @@ test("iOS loops restart under app control and progress follows presented frames"
     "const confirmPresentedPlayback = useCallback("
   );
   const confirmationEnd = shortsPageSource.indexOf(
-    "// 点赞数和\"是否已点过赞\"状态",
+    "// 是否已点过赞。真正的防重",
     confirmationStart
   );
   assert.ok(confirmationStart >= 0 && confirmationEnd > confirmationStart);

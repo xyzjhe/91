@@ -40,6 +40,24 @@ test("detail like and dislike buttons are visually separated", () => {
   );
 });
 
+test("desktop share button matches the like button without changing narrow screens", () => {
+  assert.match(
+    detailCss,
+    /@media \(min-width:\s*769px\)\s*\{[\s\S]*?\.vd-actions__share:not\(\.is-success\)\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.04\)[^}]*color:\s*var\(--text-default\)/s
+  );
+  assert.match(
+    detailCss,
+    /\.vd-actions__share:not\(\.is-success\):hover:not\(:disabled\)\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.06\)[^}]*border-color:\s*var\(--border-strong\)[^}]*color:\s*var\(--text-strong\)/s
+  );
+});
+
+test("touch devices do not retain the share button hover highlight", () => {
+  assert.match(
+    detailCss,
+    /@media \(hover:\s*none\) and \(pointer:\s*coarse\)\s*\{[\s\S]*?\.vd-actions__share:not\(\.is-success\):hover:not\(:disabled\)\s*\{[^}]*background:\s*transparent[^}]*border-color:\s*var\(--border-subtle\)[^}]*color:\s*var\(--text-muted\)/s
+  );
+});
+
 test("detail playback actions only expose delete as the management action", () => {
   assert.doesNotMatch(actionsSource, /不再显示/);
   assert.doesNotMatch(actionsSource, /EyeOff/);

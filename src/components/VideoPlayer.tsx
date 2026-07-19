@@ -315,7 +315,11 @@ function inferSourceType(src: string) {
 
 function isBackendNativeVideoRoute(cleanPath: string) {
   const pathname = sourcePathname(cleanPath);
-  return pathname.startsWith("/p/stream/") || pathname.startsWith("/p/upload/");
+  return (
+    pathname.startsWith("/p/stream/") ||
+    pathname.startsWith("/p/upload/") ||
+    pathname.startsWith("/p/share/")
+  );
 }
 
 function sourcePathname(src: string) {

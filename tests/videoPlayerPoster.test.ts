@@ -224,6 +224,32 @@ test("detail loading skeleton actions stay inside mobile viewport", () => {
   );
 });
 
+test("detail loading skeleton mirrors the desktop action toolbar", () => {
+  assert.match(detailPageSource, /vd-skeleton__action--like/);
+  assert.match(detailPageSource, /vd-skeleton__action--dislike/);
+  assert.match(detailPageSource, /vd-skeleton__action--share/);
+  assert.match(
+    detailPageSource,
+    /\{isAdmin && \([\s\S]*?vd-skeleton__action--delete/
+  );
+  assert.match(
+    detailCss,
+    /\.vd-skeleton__action--share,[\s\S]*?\.vd-skeleton__action--delete\s*\{[^}]*width:\s*84px/s
+  );
+  assert.match(
+    detailCss,
+    /\.vd-skeleton__action--delete\s*\{[^}]*margin-left:\s*auto/s
+  );
+  assert.match(
+    detailCss,
+    /@media \(min-width:\s*769px\)\s*\{[\s\S]*?\.vd-skeleton__action--dislike\s*\{[^}]*margin-right:\s*calc\(var\(--space-3\) - var\(--space-2\)\)/s
+  );
+  assert.doesNotMatch(
+    detailCss,
+    /\.vd-skeleton__actions span:last-child\s*\{[^}]*width:\s*104px/s
+  );
+});
+
 test("detail video title uses a restrained size", () => {
   assert.match(
     detailCss,

@@ -16,6 +16,7 @@ import {
   Info,
   Sparkles,
   AlertCircle,
+  Share2,
 } from "lucide-react";
 import {
   fetchShortsNext,
@@ -26,6 +27,10 @@ import {
 } from "@/data/videos";
 import { AdminEmptyVisual } from "@/admin/AdminEmptyVisual";
 import { useAuth } from "@/admin/AuthContext";
+import {
+  copyExistingVideoShareURL,
+  createAndCopyVideoShare,
+} from "@/lib/videoShareClipboard";
 import "@/styles/shorts.css";
 
 // 只保存固定大小的服务端 feed 令牌和已实际看到的游标。
@@ -1373,6 +1378,12 @@ function ShortsSlide({
   const isBufferingRef = useRef(false);
   // 是否已经被隐藏/拉黑
   const [isMarkedHidden, setIsMarkedHidden] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const pendingShareURLRef = useRef("");
+
+  useEffect(() => {
+    pendingShareURLRef.current = "";
+  }, [item.id]);
 
   // 进度状态。iOS 由实际呈现帧更新，其他平台由 timeupdate 更新；
   // 拖动期间则以用户输入为准。
@@ -1455,10 +1466,8 @@ function ShortsSlide({
 
   useEffect(() => clearBufferingIndicatorTimer, [clearBufferingIndicatorTimer]);
 
-  // 点赞数和"是否已点过赞"状态。
-  // 初始 likes 取自后端返回的列表项；isLiked 仅控制视觉态，
-  // 真正的防重在父组件 likedIdsRef 里，这里只信任父返回的回执。
-  const [likes, setLikes] = useState(item.likes ?? 0);
+  // 是否已点过赞。真正的防重在父组件 likedIdsRef 里，
+  // 这里仅控制视觉态并依据父组件返回的回执处理失败回滚。
   const [isLiked, setIsLiked] = useState(false);
   // 屏幕中央的心形飞起动画（双击点赞时显示）
   const [heartBurst, setHeartBurst] = useState<{
@@ -1474,12 +1483,10 @@ function ShortsSlide({
   const suppressNextClickRef = useRef(false);
   const suppressNextClickResetTimerRef = useRef<number | null>(null);
 
-  // 切换视频时把 likes 同步到新视频的初始值；
-  // isLiked 取自父组件的全局集合，这样切走再切回 / 同一 id 重复出现仍能保持视觉态
+  // isLiked 取自父组件的全局集合，这样切走再切回 / 同一 id 重复出现仍能保持视觉态。
   useEffect(() => {
-    setLikes(item.likes ?? 0);
     setIsLiked(hasLiked(item.id));
-  }, [item.id, item.likes, hasLiked]);
+  }, [item.id, hasLiked]);
 
   const setRef = useCallback(
     (el: HTMLVideoElement | null) => {
@@ -2557,14 +2564,10 @@ function ShortsSlide({
     // 真要取消请点右下角心形按钮
     if (isLiked) return;
     setIsLiked(true);
-    setLikes((n) => n + 1);
     void onLikeToggle(item.id, true).then((serverLikes) => {
-      if (serverLikes !== null) {
-        setLikes(serverLikes);
-      } else {
+      if (serverLikes === null) {
         // 请求失败：回滚视觉态
         setIsLiked(false);
-        setLikes((n) => Math.max(0, n - 1));
       }
     });
   }
@@ -2601,27 +2604,47 @@ function ShortsSlide({
         window.setTimeout(() => setHeartBurst(null), 700);
       }
       setIsLiked(true);
-      setLikes((n) => n + 1);
       void onLikeToggle(item.id, true).then((serverLikes) => {
-        if (serverLikes !== null) {
-          setLikes(serverLikes);
-        } else {
+        if (serverLikes === null) {
           setIsLiked(false);
-          setLikes((n) => Math.max(0, n - 1));
         }
       });
     } else {
       // 取消点赞：视觉立即响应，请求失败再回滚
       setIsLiked(false);
-      setLikes((n) => Math.max(0, n - 1));
       void onLikeToggle(item.id, false).then((serverLikes) => {
-        if (serverLikes !== null) {
-          setLikes(serverLikes);
-        } else {
+        if (serverLikes === null) {
           setIsLiked(true);
-          setLikes((n) => n + 1);
         }
       });
+    }
+  }
+
+  /** 创建并复制与详情页相同的一次性分享链接。 */
+  async function handleShareClick(e: React.MouseEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      if (pendingShareURLRef.current) {
+        await copyExistingVideoShareURL(pendingShareURLRef.current);
+      } else {
+        const result = await createAndCopyVideoShare(item.id);
+        if (!result.copied) {
+          pendingShareURLRef.current = result.url;
+          showHud("请再次点击分享按钮");
+          return;
+        }
+      }
+      pendingShareURLRef.current = "";
+      showHud("一次性分享链接已复制");
+    } catch {
+      showHud(
+        pendingShareURLRef.current ? "复制失败，请重试" : "分享失败，请重试",
+        <AlertCircle size={16} />
+      );
+    } finally {
+      setIsSharing(false);
     }
   }
 
@@ -2854,9 +2877,19 @@ function ShortsSlide({
             fill={isLiked ? "currentColor" : "none"}
             strokeWidth={2}
           />
-          <span className="shorts-slide__action-count">{formatCount(likes)}</span>
         </button>
 
+        {/* 一次性分享 */}
+        <button
+          type="button"
+          className="shorts-slide__action"
+          aria-label="生成并复制一次性分享链接"
+          aria-busy={isSharing}
+          disabled={isSharing}
+          onClick={handleShareClick}
+        >
+          <Share2 size={22} />
+        </button>
 
 
         {canHide && (
@@ -3141,14 +3174,6 @@ function formatClock(seconds: number) {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/** 简易的点赞数缩写：1.2k / 3.4w，避免 5 位数挤爆右侧操作栏 */
-function formatCount(n: number) {
-  if (!Number.isFinite(n) || n <= 0) return "0";
-  if (n < 1000) return String(n);
-  if (n < 10000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
-  return (n / 10000).toFixed(1).replace(/\.0$/, "") + "w";
 }
 
 /** 识别云盘缩写名称 */

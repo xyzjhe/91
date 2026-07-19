@@ -56,6 +56,9 @@ export async function diagnosePlaybackSource(
         return "当前账号无权访问该视频源。";
       case 404:
       case 410:
+        if (sourceURL.pathname.startsWith("/p/share/")) {
+          return "分享播放凭证已失效，请重新打开有效的一次性分享链接。";
+        }
         return "视频文件不存在或已失效，请联系管理员重新扫描。";
       case 429:
         return "视频源当前正在限流，请稍后重试。";
@@ -75,7 +78,8 @@ export function isSameOriginPlaybackURL(sourceURL: URL, pageURL: URL) {
   if (sourceURL.origin !== pageURL.origin) return false;
   return (
     sourceURL.pathname.startsWith("/p/stream/") ||
-    sourceURL.pathname.startsWith("/p/upload/")
+    sourceURL.pathname.startsWith("/p/upload/") ||
+    sourceURL.pathname.startsWith("/p/share/")
   );
 }
 

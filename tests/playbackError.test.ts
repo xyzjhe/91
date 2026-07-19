@@ -22,8 +22,27 @@ test("playback diagnostics only inspect same-origin backend media routes", () =>
     false
   );
   assert.equal(
+    isSameOriginPlaybackURL(
+      new URL("https://video.example/p/share/share-1/stream"),
+      page
+    ),
+    true
+  );
+  assert.equal(
     isSameOriginPlaybackURL(new URL("https://video.example/api/videos/1"), page),
     false
+  );
+});
+
+test("playback diagnostics identify an expired share session", async () => {
+  const message = await diagnosePlaybackSource("/p/share/share-1/stream", {
+    baseHref: "https://video.example/share/token",
+    fetch: async () => new Response("not found", { status: 404 }),
+  });
+
+  assert.equal(
+    message,
+    "分享播放凭证已失效，请重新打开有效的一次性分享链接。"
   );
 });
 

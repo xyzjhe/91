@@ -26,7 +26,6 @@ import (
 	drivepkg "github.com/video-site/backend/internal/drives"
 	"github.com/video-site/backend/internal/drives/localstorage"
 	"github.com/video-site/backend/internal/drives/localupload"
-	"github.com/video-site/backend/internal/mediaasset"
 	"github.com/video-site/backend/internal/proxy"
 )
 
@@ -74,6 +73,10 @@ type Server struct {
 	homeRecommendationMu       sync.Mutex
 	homeRecommendationSessions map[string]*homeRecommendationSession
 	homeRecommendationNow      func() time.Time
+
+	// shareNow is injectable so one-time share expiry behavior can be tested
+	// without sleeping. Production leaves it nil and uses time.Now.
+	shareNow func() time.Time
 
 	// GetTheme 返回当前生效的主题（"dark" | "pink" | "sky"）。前台 /api/settings/theme 用，
 	// 不需要登录。无注入时返回 "dark"。
@@ -158,12 +161,23 @@ func (s *Server) RegisterRoutes(r chi.Router, a *auth.Authenticator) {
 	// 鉴权组之外。只暴露 theme 一个字段，避免泄露其他设置。
 	r.Get("/api/settings/theme", s.handleGetTheme)
 
+	// 一次性分享的领取和媒体路由必须公开，但每个媒体请求都会再次校验
+	// HttpOnly 分享会话，并且只能访问该分享绑定的单个视频。
+	r.Post("/api/share/consume", s.handleConsumeVideoShare)
+	r.Get("/api/share/{shareID}/subtitles", s.handleSharedVideoSubtitles)
+	r.Post("/api/share/{shareID}/view", s.handleSharedVideoView)
+	r.Get("/p/share/{shareID}/stream", s.handleSharedVideoStream)
+	r.Get("/p/share/{shareID}/preview", s.handleSharedVideoPreview)
+	r.Get("/p/share/{shareID}/thumb", s.handleSharedVideoThumb)
+	r.Get("/p/share/{shareID}/subtitle/{index}", s.handleSharedSubtitleFile)
+
 	r.Group(func(r chi.Router) {
 		r.Use(a.Required)
 		r.Get("/api/home", s.handleHome)
 		r.Get("/api/list", s.handleList)
 		r.Get("/api/video/{id}", s.handleVideoDetail)
 		r.Get("/api/video/{id}/subtitles", s.handleVideoSubtitles)
+		r.Post("/api/video/{id}/share", s.handleCreateVideoShare)
 		r.Post("/api/video/{id}/like", s.handleLike)
 		r.Delete("/api/video/{id}/like", s.handleUnlike)
 		r.Post("/api/video/{id}/view", s.handleView)
@@ -280,23 +294,10 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleVideoDetail(w http.ResponseWriter, r *http.Request) {
 	id := routeParam(r, "id")
-	v, err := s.Catalog.GetVideo(r.Context(), id)
+	v, err := s.availableVideo(r.Context(), id)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, err)
 		return
-	}
-	if v.Hidden {
-		writeErr(w, http.StatusNotFound, sql.ErrNoRows)
-		return
-	}
-	if v.DriveID != localUploadDriveID {
-		if _, err := s.Catalog.GetDrive(r.Context(), v.DriveID); err != nil {
-			drives, listErr := s.Catalog.ListDrives(r.Context())
-			if listErr != nil || len(drives) > 0 {
-				writeErr(w, http.StatusNotFound, sql.ErrNoRows)
-				return
-			}
-		}
 	}
 	related := s.pickRelatedVideos(r.Context(), v, 6)
 	dto := mapVideo(v)
@@ -735,46 +736,7 @@ func (s *Server) handleSubtitleFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, errors.New("invalid subtitle index"))
 		return
 	}
-	subs, err := s.loadVideoSubtitles(r.Context(), v)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	if index >= len(subs) {
-		writeErr(w, http.StatusNotFound, errors.New("subtitle not found"))
-		return
-	}
-	sub := subs[index]
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, sub.URL, nil)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0")
-	resp, err := subtitleHTTPClient.Do(req)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		writeErr(w, http.StatusBadGateway, fmt.Errorf("subtitle upstream status=%d", resp.StatusCode))
-		return
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSubtitleBytes+1))
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	if int64(len(data)) > maxSubtitleBytes {
-		writeErr(w, http.StatusBadGateway, errors.New("subtitle file is too large"))
-		return
-	}
-	w.Header().Set("Content-Type", subtitleContentType(sub.Ext))
-	w.Header().Set("Cache-Control", "private, max-age=300")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	s.serveSubtitleSelection(w, r, v, index)
 }
 
 func (s *Server) visibleVideo(w http.ResponseWriter, r *http.Request, id string) (*catalog.Video, bool) {
@@ -793,18 +755,7 @@ func (s *Server) handleUploadedVideo(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	path, err := s.localUploadFilePath(v.FileID)
-	if err != nil {
-		http.Error(w, "invalid upload file", http.StatusForbidden)
-		return
-	}
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() || info.Size() == 0 {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Cache-Control", "private, max-age=300")
-	http.ServeFile(w, r, path)
+	s.serveUploadedVideo(w, r, v)
 }
 
 func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
@@ -814,45 +765,11 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if v.PreviewStatus != "ready" {
-		http.Error(w, "preview not ready", http.StatusNotFound)
-		return
-	}
-	if v.PreviewLocal != "" {
-		if !strings.HasPrefix(filepath.Clean(v.PreviewLocal), filepath.Clean(s.LocalDir)) {
-			http.Error(w, "invalid local path", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Pragma", "no-cache")
-		w.Header().Set("Expires", "0")
-		s.Proxy.ServeLocal(w, r, v.PreviewLocal)
-		return
-	}
-	http.NotFound(w, r)
+	s.servePreviewVideo(w, r, v)
 }
 
 func (s *Server) handleThumb(w http.ResponseWriter, r *http.Request) {
-	videoID := routeParam(r, "videoID")
-	var clean string
-	for _, path := range mediaasset.ThumbnailPathCandidates(s.LocalDir, videoID) {
-		candidate := filepath.Clean(path)
-		if !strings.HasPrefix(candidate, filepath.Clean(s.LocalDir)) {
-			http.Error(w, "invalid path", http.StatusForbidden)
-			return
-		}
-		if _, err := os.Stat(candidate); err == nil {
-			clean = candidate
-			break
-		}
-	}
-	if clean == "" {
-		w.Header().Set("Cache-Control", "no-store")
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Cache-Control", "private, max-age=86400")
-	s.Proxy.ServeLocal(w, r, clean)
+	s.serveVideoThumb(w, r, routeParam(r, "videoID"))
 }
 
 // ---------- helpers ----------
