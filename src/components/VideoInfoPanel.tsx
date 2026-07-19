@@ -226,7 +226,7 @@ export function VideoInfoPanel({
           ) : (
             tags.map((t) => (
               <span key={t} className="vd-tag">
-                #{t}
+                {t}
               </span>
             ))
           )}

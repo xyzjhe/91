@@ -116,3 +116,8 @@ test("detail tag editor chips hide counts and avoid divider lines", () => {
   assert.match(detailCss, /\.vd-tag-editor__chip\s*\{[^}]*border:\s*0/s);
   assert.match(detailCss, /\.vd-tag-editor__actions\s*\{[^}]*border-top:\s*0/s);
 });
+
+test("detail tag labels omit the hash prefix", () => {
+  assert.match(infoPanelSource, /className="vd-tag"[\s\S]*?\{t\}/);
+  assert.doesNotMatch(infoPanelSource, /#\{t\}/);
+});
