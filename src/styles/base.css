@@ -17,8 +17,11 @@ body,
 }
 
 html {
-  /* 让锚点跳转有平滑动画，但尊重系统 reduce-motion */
-  scroll-behavior: smooth;
+  /*
+   * 历史记录恢复必须是即时的。全局 smooth 会让浏览器后退到视频列表时
+   * 从页面顶部缓慢滚回原位置；需要动画的按钮会在调用 scrollTo 时单独声明。
+   */
+  scroll-behavior: auto;
   scrollbar-gutter: stable;
   overflow-y: auto;
 }

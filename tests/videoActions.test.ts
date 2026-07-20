@@ -78,6 +78,41 @@ test("detail recommendations stay stable when returning from another video", () 
   assert.doesNotMatch(detailPageSource, /setDetail\(d\)/);
 });
 
+test("detail history navigation renders cached content before background refresh", () => {
+  assert.match(detailPageSource, /const DETAIL_CACHE_LIMIT = 20;/);
+  assert.match(
+    detailPageSource,
+    /const cachedVideoDetailsByID = new Map<string, VideoDetailSnapshot>\(\)/
+  );
+  assert.match(
+    detailPageSource,
+    /<VideoDetailContent key=\{id \?\? "missing"\} id=\{id\} \/>/
+  );
+  assert.match(
+    detailPageSource,
+    /const \[initialSnapshot\] = useState<VideoDetailSnapshot \| null>\(\(\) =>\s*id \? readCachedVideoDetail\(id\) : null/
+  );
+  assert.match(
+    detailPageSource,
+    /const \[loading, setLoading\] = useState\(initialSnapshot === null\)/
+  );
+  assert.match(
+    detailPageSource,
+    /Promise\.all\(\[fetchVideoDetail\(id\), fetchTags\(\), fetchVideoSubtitles\(id\)\]\)/
+  );
+  assert.match(detailPageSource, /if \(!stableDetail && initialSnapshot\)/);
+  assert.match(detailPageSource, /if \(navigationType !== "POP"\)/);
+  assert.doesNotMatch(detailPageSource, /setLoading\(true\)/);
+});
+
+test("silent detail refresh does not recreate the player for unchanged subtitles", () => {
+  assert.match(detailPageSource, /function haveSameSubtitles\(/);
+  assert.match(
+    detailPageSource,
+    /haveSameSubtitles\(initialSnapshot\.subtitles, subtitleList\)[\s\S]*?\? initialSnapshot\.subtitles[\s\S]*?: subtitleList/
+  );
+});
+
 test("detail delete dialog stays centered on mobile", () => {
   assert.match(
     detailCss,

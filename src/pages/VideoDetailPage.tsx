@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  useParams,
+} from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { VideoActions } from "@/components/VideoActions";
@@ -18,8 +23,58 @@ import { useAuth } from "@/admin/AuthContext";
 import { resolveVideoReturnPath } from "@/lib/videoReturnPath";
 import type { TagItem, VideoDetail, VideoSubtitle } from "@/types";
 
+const DETAIL_CACHE_LIMIT = 20;
 const RELATED_CACHE_LIMIT = 80;
+
+type VideoDetailSnapshot = {
+  detail: VideoDetail;
+  tags: TagItem[];
+  subtitles: VideoSubtitle[];
+};
+
+const cachedVideoDetailsByID = new Map<string, VideoDetailSnapshot>();
 const cachedRelatedVideosByID = new Map<string, VideoDetail["relatedVideos"]>();
+
+function readCachedVideoDetail(id: string): VideoDetailSnapshot | null {
+  return cachedVideoDetailsByID.get(id) ?? null;
+}
+
+function rememberVideoDetail(snapshot: VideoDetailSnapshot) {
+  const id = snapshot.detail.id;
+  cachedVideoDetailsByID.delete(id);
+  cachedVideoDetailsByID.set(id, snapshot);
+
+  if (cachedVideoDetailsByID.size > DETAIL_CACHE_LIMIT) {
+    const oldestID = cachedVideoDetailsByID.keys().next().value;
+    if (oldestID) cachedVideoDetailsByID.delete(oldestID);
+  }
+}
+
+function forgetVideoDetail(id: string) {
+  cachedVideoDetailsByID.delete(id);
+  cachedRelatedVideosByID.delete(id);
+}
+
+function haveSameSubtitles(
+  current: VideoSubtitle[],
+  next: VideoSubtitle[]
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((subtitle, index) => {
+      const candidate = next[index];
+      return (
+        subtitle.name === candidate.name &&
+        subtitle.label === candidate.label &&
+        subtitle.language === candidate.language &&
+        subtitle.ext === candidate.ext &&
+        subtitle.type === candidate.type &&
+        subtitle.url === candidate.url &&
+        subtitle.source === candidate.source
+      );
+    })
+  );
+}
 
 function rememberRelatedVideos(id: string, videos: VideoDetail["relatedVideos"]) {
   if (cachedRelatedVideosByID.has(id)) return;
@@ -40,14 +95,28 @@ function withStableRelatedVideos(detail: VideoDetail | null): VideoDetail | null
 
 export default function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
+
+  // 参数变化时明确卸载上一台播放器；JSON 快照由下面的轻量缓存恢复。
+  return <VideoDetailContent key={id ?? "missing"} id={id} />;
+}
+
+function VideoDetailContent({ id }: { id?: string }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const { isAdmin } = useAuth();
   const locationState = location.state as { from?: unknown } | null;
-  const [detail, setDetail] = useState<VideoDetail | null>(null);
-  const [tags, setTags] = useState<TagItem[]>([]);
-  const [subtitles, setSubtitles] = useState<VideoSubtitle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialSnapshot] = useState<VideoDetailSnapshot | null>(() =>
+    id ? readCachedVideoDetail(id) : null
+  );
+  const [detail, setDetail] = useState<VideoDetail | null>(
+    initialSnapshot?.detail ?? null
+  );
+  const [tags, setTags] = useState<TagItem[]>(initialSnapshot?.tags ?? []);
+  const [subtitles, setSubtitles] = useState<VideoSubtitle[]>(
+    initialSnapshot?.subtitles ?? []
+  );
+  const [loading, setLoading] = useState(initialSnapshot === null);
   const [tagSaving, setTagSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSource, setDeleteSource] = useState(false);
@@ -55,18 +124,50 @@ export default function VideoDetailPage() {
   const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      document.title = "视频不存在";
+      return;
+    }
     let active = true;
-    window.scrollTo({ top: 0, behavior: "auto" });
-    setLoading(true);
-    setSubtitles([]);
+    if (navigationType !== "POP") {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+    if (initialSnapshot) {
+      // effect 中更新最近使用顺序，保持 React 的 state initializer 无副作用。
+      rememberVideoDetail(initialSnapshot);
+      document.title = initialSnapshot.detail.title;
+    }
+
+    // 命中快照时保留当前画面，在后台静默校验最新详情、标签和字幕。
     Promise.all([fetchVideoDetail(id), fetchTags(), fetchVideoSubtitles(id)]).then(
       ([d, tagList, subtitleList]) => {
         if (!active) return;
         const stableDetail = withStableRelatedVideos(d);
+
+        // 请求短暂失败时 fetchVideoDetail 会返回 null；已有快照比错误空态更有用。
+        if (!stableDetail && initialSnapshot) {
+          setLoading(false);
+          return;
+        }
+
+        const stableSubtitles = stableDetail
+          ? initialSnapshot &&
+            haveSameSubtitles(initialSnapshot.subtitles, subtitleList)
+            ? initialSnapshot.subtitles
+            : subtitleList
+          : [];
+
+        if (stableDetail) {
+          rememberVideoDetail({
+            detail: stableDetail,
+            tags: tagList,
+            subtitles: stableSubtitles,
+          });
+        }
         setDetail(stableDetail);
         setTags(tagList);
-        setSubtitles(d ? subtitleList : []);
+        setSubtitles(stableSubtitles);
         setLoading(false);
         document.title = stableDetail ? stableDetail.title : "视频不存在";
       }
@@ -74,14 +175,16 @@ export default function VideoDetailPage() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, initialSnapshot, navigationType]);
 
   async function handleTagsChange(nextTags: string[]) {
     if (!detail) return;
     setTagSaving(true);
     try {
       const updated = await updateVideoTags(detail.id, nextTags);
-      setDetail({ ...detail, tags: updated.tags ?? [] });
+      const nextDetail = { ...detail, tags: updated.tags ?? [] };
+      setDetail(nextDetail);
+      rememberVideoDetail({ detail: nextDetail, tags, subtitles });
     } finally {
       setTagSaving(false);
     }
@@ -106,6 +209,7 @@ export default function VideoDetailPage() {
     setDeleteError("");
     try {
       await deleteVideo(detail.id, { deleteSource });
+      forgetVideoDetail(detail.id);
       const from = typeof locationState?.from === "string" ? locationState.from : null;
       navigate(resolveVideoReturnPath(from), { replace: true });
     } catch {
