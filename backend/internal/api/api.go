@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,10 +24,11 @@ import (
 
 	"github.com/video-site/backend/internal/auth"
 	"github.com/video-site/backend/internal/catalog"
-	drivepkg "github.com/video-site/backend/internal/drives"
 	"github.com/video-site/backend/internal/drives/localstorage"
 	"github.com/video-site/backend/internal/drives/localupload"
 	"github.com/video-site/backend/internal/proxy"
+	"github.com/video-site/backend/internal/subtitles"
+	"github.com/video-site/backend/internal/tagging"
 	"github.com/video-site/backend/internal/videoname"
 )
 
@@ -55,6 +57,7 @@ const maxSubtitleBytes = 20 << 20
 type Server struct {
 	Catalog         *catalog.Catalog
 	Proxy           *proxy.Proxy
+	SubtitleClient  subtitles.Client
 	LocalDir        string
 	UploadDir       string
 	OnVideoUploaded func(*catalog.Video)
@@ -82,6 +85,17 @@ type Server struct {
 	// GetTheme 返回当前生效的主题（"dark" | "pink" | "sky"）。前台 /api/settings/theme 用，
 	// 不需要登录。无注入时返回 "dark"。
 	GetTheme func() string
+
+	subtitleCacheMu  sync.Mutex
+	subtitleCache    map[string]subtitleCacheEntry
+	subtitleCacheNow func() time.Time
+}
+
+type subtitleCacheEntry struct {
+	videoID string
+	subs    []subtitles.Subtitle
+	expires time.Time
+	created time.Time
 }
 
 const (
@@ -818,35 +832,121 @@ func mapVideo(v *catalog.Video) VideoDTO {
 	}
 }
 
-func (s *Server) loadVideoSubtitles(ctx context.Context, v *catalog.Video) ([]drivepkg.Subtitle, error) {
-	if v == nil || v.DriveID == localUploadDriveID || s.Proxy == nil || s.Proxy.Registry == nil {
-		return []drivepkg.Subtitle{}, nil
+func (s *Server) loadVideoSubtitles(ctx context.Context, v *catalog.Video) ([]subtitles.Subtitle, error) {
+	if v == nil || s.SubtitleClient == nil {
+		return []subtitles.Subtitle{}, nil
 	}
-	d, ok := s.Proxy.Registry.Get(v.DriveID)
-	if !ok {
-		return []drivepkg.Subtitle{}, nil
-	}
-	provider, ok := d.(drivepkg.SubtitleProvider)
-	if !ok {
-		return []drivepkg.Subtitle{}, nil
-	}
-	subs, err := provider.Subtitles(ctx, drivepkg.SubtitleRequest{
+	request := subtitles.Request{
 		FileID:          v.FileID,
 		FileName:        v.FileName,
+		LookupNames:     subtitleLookupAliases(v),
 		ContentHash:     v.ContentHash,
+		SampledSHA256:   v.SampledSHA256,
 		DurationSeconds: v.DurationSeconds,
-	})
-	if err != nil {
-		if errors.Is(err, drivepkg.ErrNotSupported) {
-			return []drivepkg.Subtitle{}, nil
-		}
-		return nil, err
 	}
-	return filterSupportedSubtitles(subs), nil
+	cacheKey := subtitleCacheKey(v, request)
+	if subs, ok := s.cachedSubtitles(cacheKey); ok {
+		return subs, nil
+	}
+	subs, err := s.SubtitleClient.Subtitles(ctx, request)
+	if err != nil {
+		// Subtitle lookup is best effort. Authentication changes, timeouts, rate
+		// limits, and malformed upstream responses must never interrupt playback.
+		subs = []subtitles.Subtitle{}
+	}
+	subs = filterSupportedSubtitles(subs, v.DurationSeconds)
+	s.cacheSubtitles(cacheKey, v.ID, subs)
+	return cloneSubtitles(subs), nil
 }
 
-func filterSupportedSubtitles(subs []drivepkg.Subtitle) []drivepkg.Subtitle {
-	out := make([]drivepkg.Subtitle, 0, len(subs))
+func subtitleLookupAliases(v *catalog.Video) []string {
+	if v == nil {
+		return nil
+	}
+	for _, candidate := range []string{v.FileName, v.ID, v.Title} {
+		if code := tagging.FindSubtitleAVCode(candidate); code != "" {
+			return []string{code}
+		}
+	}
+	return nil
+}
+
+func subtitleCacheKey(v *catalog.Video, req subtitles.Request) string {
+	return strings.Join([]string{
+		v.ID, v.DriveID, req.FileID, req.FileName,
+		strings.Join(req.LookupNames, "\x1f"), req.ContentHash, req.SampledSHA256,
+		strconv.Itoa(req.DurationSeconds),
+	}, "\x00")
+}
+
+func (s *Server) subtitleNow() time.Time {
+	if s.subtitleCacheNow != nil {
+		return s.subtitleCacheNow()
+	}
+	return time.Now()
+}
+
+func (s *Server) cachedSubtitles(key string) ([]subtitles.Subtitle, bool) {
+	now := s.subtitleNow()
+	s.subtitleCacheMu.Lock()
+	defer s.subtitleCacheMu.Unlock()
+	entry, ok := s.subtitleCache[key]
+	if !ok || !now.Before(entry.expires) {
+		if ok {
+			delete(s.subtitleCache, key)
+		}
+		return nil, false
+	}
+	return cloneSubtitles(entry.subs), true
+}
+
+func (s *Server) cacheSubtitles(key, videoID string, subs []subtitles.Subtitle) {
+	now := s.subtitleNow()
+	ttl := 5 * time.Minute
+	if len(subs) == 0 {
+		ttl = time.Minute
+	}
+	s.subtitleCacheMu.Lock()
+	defer s.subtitleCacheMu.Unlock()
+	if s.subtitleCache == nil {
+		s.subtitleCache = make(map[string]subtitleCacheEntry)
+	}
+	for existingKey, entry := range s.subtitleCache {
+		if !now.Before(entry.expires) {
+			delete(s.subtitleCache, existingKey)
+		}
+	}
+	if len(s.subtitleCache) >= 2048 {
+		var oldestKey string
+		var oldest time.Time
+		for existingKey, entry := range s.subtitleCache {
+			if oldestKey == "" || entry.created.Before(oldest) {
+				oldestKey, oldest = existingKey, entry.created
+			}
+		}
+		delete(s.subtitleCache, oldestKey)
+	}
+	s.subtitleCache[key] = subtitleCacheEntry{videoID: videoID, subs: cloneSubtitles(subs), expires: now.Add(ttl), created: now}
+}
+
+func (s *Server) invalidateSubtitleCache(videoID string) {
+	s.subtitleCacheMu.Lock()
+	defer s.subtitleCacheMu.Unlock()
+	for key, entry := range s.subtitleCache {
+		if entry.videoID == videoID {
+			delete(s.subtitleCache, key)
+		}
+	}
+}
+
+func cloneSubtitles(subs []subtitles.Subtitle) []subtitles.Subtitle {
+	out := make([]subtitles.Subtitle, len(subs))
+	copy(out, subs)
+	return out
+}
+
+func filterSupportedSubtitles(subs []subtitles.Subtitle, videoDuration int) []subtitles.Subtitle {
+	out := make([]subtitles.Subtitle, 0, len(subs))
 	for _, sub := range subs {
 		if subtitlePlayerType(sub.Ext) == "" {
 			continue
@@ -856,10 +956,97 @@ func filterSupportedSubtitles(subs []drivepkg.Subtitle) []drivepkg.Subtitle {
 		}
 		out = append(out, sub)
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		iGroup, iDelta := subtitleDurationOrder(out[i].DurationSeconds, videoDuration)
+		jGroup, jDelta := subtitleDurationOrder(out[j].DurationSeconds, videoDuration)
+		if iGroup != jGroup {
+			return iGroup < jGroup
+		}
+		if iDelta != jDelta {
+			return iDelta < jDelta
+		}
+		iLanguage := subtitleLanguageOrder(out[i])
+		jLanguage := subtitleLanguageOrder(out[j])
+		if iLanguage != jLanguage {
+			return iLanguage < jLanguage
+		}
+		return subtitleOrderKey(out[i]) < subtitleOrderKey(out[j])
+	})
 	return out
 }
 
-func mapSubtitles(videoID string, subs []drivepkg.Subtitle) []SubtitleDTO {
+func subtitleDurationOrder(subtitleDuration, videoDuration int) (group, delta int) {
+	if videoDuration <= 0 {
+		return 0, 0
+	}
+	if subtitleDuration <= 0 {
+		return 1, 0
+	}
+	delta = subtitleDuration - videoDuration
+	if delta < 0 {
+		delta = -delta
+	}
+	tolerance := int(float64(videoDuration) * 0.02)
+	if tolerance < 30 {
+		tolerance = 30
+	}
+	if tolerance > 120 {
+		tolerance = 120
+	}
+	if delta <= tolerance {
+		return 0, delta
+	}
+	return 2, delta
+}
+
+func subtitleLanguageOrder(sub subtitles.Subtitle) int {
+	language := strings.ToLower(strings.TrimSpace(sub.Language))
+	language = strings.ReplaceAll(language, "_", "-")
+	if language == "zh" || strings.HasPrefix(language, "zh-") || language == "zho" || language == "chi" || language == "cmn" {
+		return 0
+	}
+	if language != "" {
+		return 3
+	}
+	name := strings.ToLower(strings.TrimSpace(sub.Name))
+	if strings.Contains(name, "中文") || strings.Contains(name, "中字") || strings.Contains(name, "简体") || strings.Contains(name, "繁体") ||
+		strings.Contains(name, "zh-cn") || strings.Contains(name, "zh_cn") || strings.Contains(name, "zh-tw") || strings.Contains(name, "zh_tw") ||
+		subtitleNameHasMarker(name, "chs") || subtitleNameHasMarker(name, "cht") {
+		return 1
+	}
+	return 2
+}
+
+func subtitleNameHasMarker(name, marker string) bool {
+	for _, field := range strings.FieldsFunc(name, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+	}) {
+		if field == marker {
+			return true
+		}
+	}
+	return false
+}
+
+func subtitleOrderKey(sub subtitles.Subtitle) string {
+	rawURL := strings.TrimSpace(sub.URL)
+	if parsed, err := url.Parse(rawURL); err == nil {
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		rawURL = parsed.String()
+	}
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(sub.Language)),
+		strings.ToLower(strings.TrimSpace(sub.Name)),
+		normalizeSubtitleExt(sub.Ext),
+		strconv.Itoa(sub.Source),
+		strings.TrimSpace(sub.SourceLabel),
+		strings.TrimSpace(sub.ID),
+		rawURL,
+	}, "\x00")
+}
+
+func mapSubtitles(videoID string, subs []subtitles.Subtitle) []SubtitleDTO {
 	out := make([]SubtitleDTO, 0, len(subs))
 	for index, sub := range subs {
 		ext := normalizeSubtitleExt(sub.Ext)
@@ -881,7 +1068,7 @@ func mapSubtitles(videoID string, subs []drivepkg.Subtitle) []SubtitleDTO {
 	return out
 }
 
-func subtitleLabel(sub drivepkg.Subtitle, index int) string {
+func subtitleLabel(sub subtitles.Subtitle, index int) string {
 	parts := make([]string, 0, 3)
 	if lang := strings.TrimSpace(sub.Language); lang != "" {
 		parts = append(parts, lang)

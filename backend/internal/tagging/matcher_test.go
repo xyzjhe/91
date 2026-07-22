@@ -202,3 +202,21 @@ func TestIsAVCode(t *testing.T) {
 		}
 	}
 }
+
+func TestFindSubtitleAVCode(t *testing.T) {
+	tests := []struct {
+		text string
+		want string
+	}{
+		{"[site] actress - DASS_984.mp4", "DASS-984"},
+		{"crawler-prefix-XYZ_123.mp4", "XYZ-123"},
+		{"crawler-prefix-IMG_1234.mp4", ""},
+		{"holiday-video-2024.mp4", ""},
+		{"ordinary title 1080p.mp4", ""},
+	}
+	for _, tt := range tests {
+		if got := FindSubtitleAVCode(tt.text); got != tt.want {
+			t.Errorf("FindSubtitleAVCode(%q) = %q, want %q", tt.text, got, tt.want)
+		}
+	}
+}

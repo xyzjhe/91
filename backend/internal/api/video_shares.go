@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/video-site/backend/internal/catalog"
-	drivepkg "github.com/video-site/backend/internal/drives"
 	"github.com/video-site/backend/internal/mediaasset"
+	"github.com/video-site/backend/internal/subtitles"
 )
 
 const (
@@ -308,7 +308,7 @@ func sharedAssetURL(shareID, asset string, updatedAt time.Time) string {
 	return base + "?v=" + strconv.FormatInt(updatedAt.UnixMilli(), 10)
 }
 
-func mapSharedSubtitles(shareID string, subs []drivepkg.Subtitle) []SubtitleDTO {
+func mapSharedSubtitles(shareID string, subs []subtitles.Subtitle) []SubtitleDTO {
 	out := mapSubtitles("", subs)
 	for index := range out {
 		out[index].URL = fmt.Sprintf(
@@ -386,32 +386,43 @@ func (s *Server) serveSubtitleSelection(
 	v *catalog.Video,
 	index int,
 ) {
-	subs, err := s.loadVideoSubtitles(r.Context(), v)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	if index >= len(subs) {
-		writeErr(w, http.StatusNotFound, errors.New("subtitle not found"))
-		return
-	}
-	sub := subs[index]
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, sub.URL, nil)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
-		return
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0")
-	resp, err := subtitleHTTPClient.Do(req)
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, err)
+	var sub subtitles.Subtitle
+	var resp *http.Response
+	for attempt := 0; attempt < 2; attempt++ {
+		subs, err := s.loadVideoSubtitles(r.Context(), v)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+		if index >= len(subs) {
+			writeErr(w, http.StatusNotFound, errors.New("subtitle not found"))
+			return
+		}
+		sub = subs[index]
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, sub.URL, nil)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		resp, err = subtitleHTTPClient.Do(req)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err)
+			return
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			break
+		}
+		status := resp.StatusCode
+		_ = resp.Body.Close()
+		if attempt == 0 && (status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusGone) {
+			s.invalidateSubtitleCache(v.ID)
+			continue
+		}
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("subtitle upstream status=%d", status))
 		return
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		writeErr(w, http.StatusBadGateway, fmt.Errorf("subtitle upstream status=%d", resp.StatusCode))
-		return
-	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSubtitleBytes+1))
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err)

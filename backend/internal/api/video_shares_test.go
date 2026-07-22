@@ -17,6 +17,7 @@ import (
 	"github.com/video-site/backend/internal/auth"
 	"github.com/video-site/backend/internal/catalog"
 	"github.com/video-site/backend/internal/proxy"
+	"github.com/video-site/backend/internal/subtitles"
 )
 
 func TestVideoShareSessionTTL(t *testing.T) {
@@ -57,9 +58,19 @@ func TestOneTimeShareRouteClaimsOnceAndStreamsWithoutLogin(t *testing.T) {
 		t.Fatalf("create login session: %v", err)
 	}
 	authenticator := &auth.Authenticator{Catalog: cat}
+	subtitleUpstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/shared.srt" {
+			t.Fatalf("subtitle upstream path = %q", r.URL.Path)
+		}
+		_, _ = w.Write([]byte("shared subtitle"))
+	}))
+	defer subtitleUpstream.Close()
 	server := &Server{
-		Catalog:   cat,
-		Proxy:     proxy.New(proxy.NewRegistry()),
+		Catalog: cat,
+		Proxy:   proxy.New(proxy.NewRegistry()),
+		SubtitleClient: &apiFakeSubtitleClient{subtitles: []subtitles.Subtitle{
+			{Name: "简体中文", Ext: "srt", Language: "zh-CN", URL: subtitleUpstream.URL + "/shared.srt"},
+		}},
 		UploadDir: uploadDir,
 		shareNow:  func() time.Time { return now },
 	}
@@ -148,6 +159,30 @@ func TestOneTimeShareRouteClaimsOnceAndStreamsWithoutLogin(t *testing.T) {
 	router.ServeHTTP(rangeRR, rangeReq)
 	if rangeRR.Code != http.StatusPartialContent || rangeRR.Body.String() != "video" {
 		t.Fatalf("shared range status=%d body=%q", rangeRR.Code, rangeRR.Body.String())
+	}
+
+	subtitleListURL := "/api/share/" + consumed.ShareID + "/subtitles"
+	subtitleListReq := httptest.NewRequest(http.MethodGet, subtitleListURL, nil)
+	subtitleListReq.AddCookie(shareCookie)
+	subtitleListRR := httptest.NewRecorder()
+	router.ServeHTTP(subtitleListRR, subtitleListReq)
+	if subtitleListRR.Code != http.StatusOK {
+		t.Fatalf("shared subtitle list status=%d body=%s", subtitleListRR.Code, subtitleListRR.Body.String())
+	}
+	var subtitleList []SubtitleDTO
+	if err := json.NewDecoder(subtitleListRR.Body).Decode(&subtitleList); err != nil {
+		t.Fatalf("decode shared subtitles: %v", err)
+	}
+	wantSubtitleURL := "/p/share/" + consumed.ShareID + "/subtitle/0"
+	if len(subtitleList) != 1 || subtitleList[0].URL != wantSubtitleURL {
+		t.Fatalf("shared subtitles = %#v, want proxy URL %q", subtitleList, wantSubtitleURL)
+	}
+	subtitleReq := httptest.NewRequest(http.MethodGet, wantSubtitleURL, nil)
+	subtitleReq.AddCookie(shareCookie)
+	subtitleRR := httptest.NewRecorder()
+	router.ServeHTTP(subtitleRR, subtitleReq)
+	if subtitleRR.Code != http.StatusOK || subtitleRR.Body.String() != "shared subtitle" {
+		t.Fatalf("shared subtitle proxy status=%d body=%q", subtitleRR.Code, subtitleRR.Body.String())
 	}
 
 	now = now.Add(videoShareSessionTTL)

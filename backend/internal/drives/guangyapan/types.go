@@ -64,39 +64,6 @@ type downloadResp struct {
 	} `json:"data"`
 }
 
-type subtitleResp struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		List []subtitleItem `json:"list"`
-	} `json:"data"`
-}
-
-type subtitleItem struct {
-	GCID      string   `json:"gcid"`
-	CID       string   `json:"cid"`
-	Source    int      `json:"source"`
-	Name      string   `json:"name"`
-	Ext       string   `json:"ext"`
-	Duration  int64    `json:"duration"`
-	Languages []string `json:"languages"`
-	URL       string   `json:"url"`
-}
-
-type fileDetailResp struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		FileInfo      fileItem            `json:"fileInfo"`
-		VideoResource []videoResourceItem `json:"videoResource"`
-	} `json:"data"`
-}
-
-type videoResourceItem struct {
-	GCID    string `json:"gcid"`
-	MediaID string `json:"media_id"`
-}
-
 type createDirResp struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`

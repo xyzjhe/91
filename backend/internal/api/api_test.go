@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,6 +25,7 @@ import (
 	"github.com/video-site/backend/internal/drives"
 	"github.com/video-site/backend/internal/mediaasset"
 	"github.com/video-site/backend/internal/proxy"
+	"github.com/video-site/backend/internal/subtitles"
 )
 
 func TestVideoSourceUsesDirectStreamForAvi(t *testing.T) {
@@ -132,7 +135,7 @@ func TestHandleStreamDecodesEscapedWildcardFileID(t *testing.T) {
 	}
 }
 
-func TestHandleVideoSubtitlesUsesProvider(t *testing.T) {
+func TestHandleVideoSubtitlesUsesAnonymousClient(t *testing.T) {
 	ctx := context.Background()
 	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
 	if err != nil {
@@ -147,9 +150,9 @@ func TestHandleVideoSubtitlesUsesProvider(t *testing.T) {
 	const contentHash = "0123456789abcdef0123456789abcdef01234567"
 	if err := cat.UpsertVideo(ctx, &catalog.Video{
 		ID:              "video-1",
-		DriveID:         "drive-1",
+		DriveID:         "unmounted-drive",
 		FileID:          "file-1",
-		FileName:        "movie.mp4",
+		FileName:        "movie HND-970.mp4",
 		ContentHash:     contentHash,
 		Title:           "Movie",
 		DurationSeconds: 257,
@@ -160,28 +163,28 @@ func TestHandleVideoSubtitlesUsesProvider(t *testing.T) {
 		t.Fatalf("seed video: %v", err)
 	}
 
-	drv := &apiStreamFakeDrive{subtitles: []drives.Subtitle{
+	client := &apiFakeSubtitleClient{subtitles: []subtitles.Subtitle{
 		{Name: "简体中文", Ext: "srt", Language: "zh-CN", URL: "https://subtitle.example/movie.srt", SourceLabel: "inner"},
 		{Name: "繁体中文", Ext: "ssa", Language: "zh-TW", URL: "https://subtitle.example/movie.ssa", SourceLabel: "online"},
 		{Name: "PGS", Ext: "sup", Language: "ja", URL: "https://subtitle.example/movie.sup", SourceLabel: "online"},
 		{Name: "empty-url", Ext: "srt", Language: "en", SourceLabel: "online"},
 	}}
-	reg := proxy.NewRegistry()
-	reg.Set("drive-1", drv)
-	srv := &Server{Catalog: cat, Proxy: proxy.New(reg)}
+	// No proxy registry or GuangYaPan drive is mounted.
+	srv := &Server{Catalog: cat, SubtitleClient: client}
 
 	router := chi.NewRouter()
 	router.Get("/api/video/{id}/subtitles", srv.handleVideoSubtitles)
-	req := httptest.NewRequest(http.MethodGet, "/api/video/video-1/subtitles", nil)
 	rr := httptest.NewRecorder()
-
-	router.ServeHTTP(rr, req)
+	router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/video/video-1/subtitles", nil))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
-	if drv.subtitleReq.FileID != "file-1" || drv.subtitleReq.FileName != "movie.mp4" || drv.subtitleReq.ContentHash != contentHash || drv.subtitleReq.DurationSeconds != 257 {
-		t.Fatalf("subtitle request = %#v, want catalog metadata", drv.subtitleReq)
+	request := client.subtitleReq
+	if request.FileID != "file-1" || request.FileName != "movie HND-970.mp4" ||
+		request.ContentHash != contentHash || request.DurationSeconds != 257 ||
+		!reflect.DeepEqual(request.LookupNames, []string{"HND-970"}) {
+		t.Fatalf("subtitle request = %#v, want catalog metadata and filename alias", request)
 	}
 	var got []SubtitleDTO
 	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
@@ -195,6 +198,220 @@ func TestHandleVideoSubtitlesUsesProvider(t *testing.T) {
 	}
 	if got[1].URL != "/p/subtitle/video-1/1" || got[1].Type != "ass" || got[1].Ext != "ssa" || got[1].Label != "zh-TW · 繁体中文 · SSA" {
 		t.Fatalf("second subtitle dto = %#v", got[1])
+	}
+}
+
+func TestLoadVideoSubtitlesCoversEverySourceWithoutMountedDrive(t *testing.T) {
+	const sampledSHA256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	client := &apiFakeSubtitleClient{subtitles: []subtitles.Subtitle{
+		{ID: "sub-b", Name: "字幕 B", Ext: "srt", URL: "https://subtitle.example/b.srt"},
+		{ID: "sub-a", Name: "字幕 A", Ext: "srt", URL: "https://subtitle.example/a.srt"},
+		{ID: "sub-pgs", Name: "PGS", Ext: "sup", URL: "https://subtitle.example/a.sup"},
+	}}
+	srv := &Server{SubtitleClient: client}
+	driveIDs := []string{"pikpak-drive", "p115-drive", "ordinary-drive", localUploadDriveID}
+	for index, driveID := range driveIDs {
+		video := &catalog.Video{
+			ID:              fmt.Sprintf("video-%d", index),
+			DriveID:         driveID,
+			FileID:          fmt.Sprintf("file-%d", index),
+			FileName:        "movie.mp4",
+			ContentHash:     "provider-content-hash",
+			SampledSHA256:   sampledSHA256,
+			DurationSeconds: 257,
+		}
+		subs, err := srv.loadVideoSubtitles(context.Background(), video)
+		if err != nil {
+			t.Fatalf("loadVideoSubtitles(%s): %v", driveID, err)
+		}
+		if len(subs) != 2 || subs[0].ID != "sub-a" || subs[1].ID != "sub-b" {
+			t.Fatalf("subtitles for %s = %#v, want stable supported results", driveID, subs)
+		}
+	}
+	if client.subtitleCalls != len(driveIDs) {
+		t.Fatalf("subtitle calls = %d, want one for every source", client.subtitleCalls)
+	}
+	if request := client.subtitleReq; request.ContentHash != "provider-content-hash" ||
+		request.SampledSHA256 != sampledSHA256 || request.DurationSeconds != 257 {
+		t.Fatalf("last subtitle request = %#v", request)
+	}
+}
+
+func TestLoadVideoSubtitlesWithoutClientReturnsEmpty(t *testing.T) {
+	subs, err := (&Server{}).loadVideoSubtitles(context.Background(), &catalog.Video{
+		DriveID:  "unmounted-drive",
+		FileID:   "foreign-file-id",
+		FileName: "movie.mp4",
+	})
+	if err != nil {
+		t.Fatalf("loadVideoSubtitles: %v", err)
+	}
+	if len(subs) != 0 {
+		t.Fatalf("subtitles = %#v, want empty without an injected client", subs)
+	}
+}
+
+func TestLoadVideoSubtitlesConvertsClientErrorsToCachedEmptyResults(t *testing.T) {
+	now := time.Unix(1000, 0)
+	client := &apiFakeSubtitleClient{subtitleErr: errors.New("temporary upstream failure")}
+	srv := &Server{SubtitleClient: client, subtitleCacheNow: func() time.Time { return now }}
+	video := &catalog.Video{ID: "video-error", DriveID: "offline-drive", FileID: "file-error", FileName: "movie.mp4"}
+
+	for range 2 {
+		subs, err := srv.loadVideoSubtitles(context.Background(), video)
+		if err != nil || len(subs) != 0 {
+			t.Fatalf("client error result = %#v, %v; want empty without error", subs, err)
+		}
+	}
+	if client.subtitleCalls != 1 {
+		t.Fatalf("error subtitle calls = %d, want cached empty result", client.subtitleCalls)
+	}
+	now = now.Add(time.Minute + time.Second)
+	_, _ = srv.loadVideoSubtitles(context.Background(), video)
+	if client.subtitleCalls != 2 {
+		t.Fatalf("expired error subtitle calls = %d, want 2", client.subtitleCalls)
+	}
+}
+
+func TestLoadVideoSubtitlesCachesPositiveAndEmptyResults(t *testing.T) {
+	now := time.Unix(1000, 0)
+	positive := &apiFakeSubtitleClient{subtitles: []subtitles.Subtitle{{ID: "sub", Ext: "srt", URL: "https://subtitle.example/sub.srt"}}}
+	srv := &Server{SubtitleClient: positive, subtitleCacheNow: func() time.Time { return now }}
+	video := &catalog.Video{ID: "video-1", DriveID: "drive-1", FileID: "file-1", FileName: "movie.mp4", DurationSeconds: 100}
+
+	for range 2 {
+		if _, err := srv.loadVideoSubtitles(context.Background(), video); err != nil {
+			t.Fatalf("loadVideoSubtitles: %v", err)
+		}
+	}
+	if positive.subtitleCalls != 1 {
+		t.Fatalf("positive subtitle calls = %d, want 1", positive.subtitleCalls)
+	}
+	now = now.Add(5*time.Minute + time.Second)
+	_, _ = srv.loadVideoSubtitles(context.Background(), video)
+	if positive.subtitleCalls != 2 {
+		t.Fatalf("expired positive subtitle calls = %d, want 2", positive.subtitleCalls)
+	}
+
+	empty := &apiFakeSubtitleClient{}
+	srv.SubtitleClient = empty
+	emptyVideo := &catalog.Video{ID: "video-2", DriveID: localUploadDriveID, FileID: "file-2", FileName: "empty.mp4"}
+	_, _ = srv.loadVideoSubtitles(context.Background(), emptyVideo)
+	_, _ = srv.loadVideoSubtitles(context.Background(), emptyVideo)
+	if empty.subtitleCalls != 1 {
+		t.Fatalf("empty subtitle calls = %d, want 1", empty.subtitleCalls)
+	}
+	now = now.Add(time.Minute + time.Second)
+	_, _ = srv.loadVideoSubtitles(context.Background(), emptyVideo)
+	if empty.subtitleCalls != 2 {
+		t.Fatalf("expired empty subtitle calls = %d, want 2", empty.subtitleCalls)
+	}
+}
+
+func TestSubtitleLookupAliasesUsesFilenameThenVideoIDThenTitle(t *testing.T) {
+	tests := []struct {
+		video catalog.Video
+		want  string
+	}{
+		{video: catalog.Video{FileName: "prefix DASS-984.mp4", ID: "video-HND-970", Title: "SSIS-001"}, want: "DASS-984"},
+		{video: catalog.Video{FileName: "ordinary.mp4", ID: "crawler-HND-970", Title: "SSIS-001"}, want: "HND-970"},
+		{video: catalog.Video{FileName: "ordinary.mp4", ID: "opaque", Title: "title SSIS-001"}, want: "SSIS-001"},
+	}
+	for _, tt := range tests {
+		got := subtitleLookupAliases(&tt.video)
+		if len(got) != 1 || got[0] != tt.want {
+			t.Errorf("subtitleLookupAliases(%#v) = %#v, want %q", tt.video, got, tt.want)
+		}
+	}
+}
+
+func TestFilterSupportedSubtitlesOrdersByDurationThenChineseConfidence(t *testing.T) {
+	subs := []subtitles.Subtitle{
+		{ID: "mismatch", Name: "中字", Ext: "srt", Language: "", URL: "https://sub.example/mismatch.srt", DurationSeconds: 900},
+		{ID: "unknown", Name: "unknown", Ext: "srt", Language: "zh-CN", URL: "https://sub.example/unknown.srt"},
+		{ID: "close", Name: "movie.chs", Ext: "srt", URL: "https://sub.example/close.srt", DurationSeconds: 1010},
+		{ID: "exact-en", Name: "English", Ext: "srt", Language: "en", URL: "https://sub.example/en.srt", DurationSeconds: 1000},
+		{ID: "exact-zh", Name: "Chinese", Ext: "srt", Language: "zh_TW", URL: "https://sub.example/zh.srt", DurationSeconds: 1000},
+		{ID: "unsupported", Name: "PGS", Ext: "sup", URL: "https://sub.example/pgs.sup", DurationSeconds: 1000},
+	}
+
+	got := filterSupportedSubtitles(subs, 1000)
+	want := []string{"exact-zh", "exact-en", "close", "unknown", "mismatch"}
+	if len(got) != len(want) {
+		t.Fatalf("subtitles = %#v, want %d supported items", got, len(want))
+	}
+	for index, id := range want {
+		if got[index].ID != id {
+			t.Fatalf("subtitle order = %#v, want %#v", subtitleIDs(got), want)
+		}
+	}
+}
+
+func TestFilterSupportedSubtitlesWithoutVideoDurationUsesLanguageConfidence(t *testing.T) {
+	subs := []subtitles.Subtitle{
+		{ID: "en", Name: "English", Ext: "srt", Language: "en", URL: "https://sub.example/en.srt"},
+		{ID: "unknown", Name: "plain", Ext: "srt", URL: "https://sub.example/plain.srt"},
+		{ID: "inferred", Name: "movie.zh-CN.srt", Ext: "srt", URL: "https://sub.example/inferred.srt"},
+		{ID: "explicit", Name: "Chinese", Ext: "srt", Language: "zh", URL: "https://sub.example/explicit.srt"},
+	}
+
+	got := filterSupportedSubtitles(subs, 0)
+	want := []string{"explicit", "inferred", "unknown", "en"}
+	if !reflect.DeepEqual(subtitleIDs(got), want) {
+		t.Fatalf("subtitle order = %#v, want %#v", subtitleIDs(got), want)
+	}
+}
+
+func subtitleIDs(subs []subtitles.Subtitle) []string {
+	out := make([]string, len(subs))
+	for index, sub := range subs {
+		out[index] = sub.ID
+	}
+	return out
+}
+
+func TestHandleSubtitleFileRefreshesExpiredSignedURL(t *testing.T) {
+	ctx := context.Background()
+	cat, err := catalog.Open(t.TempDir() + "/catalog.db")
+	if err != nil {
+		t.Fatalf("open catalog: %v", err)
+	}
+	t.Cleanup(func() { _ = cat.Close() })
+	now := time.Now()
+	if err := cat.UpsertVideo(ctx, &catalog.Video{
+		ID: "video-refresh", DriveID: "drive-refresh", FileID: "file-refresh", FileName: "movie.mp4",
+		PublishedAt: now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed video: %v", err)
+	}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/expired.srt" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = w.Write([]byte("fresh subtitle"))
+	}))
+	defer upstream.Close()
+	client := &apiFakeSubtitleClient{subtitleFunc: func(call int, _ subtitles.Request) ([]subtitles.Subtitle, error) {
+		path := "/expired.srt"
+		if call > 1 {
+			path = "/fresh.srt"
+		}
+		return []subtitles.Subtitle{{ID: "stable", Ext: "srt", URL: upstream.URL + path}}, nil
+	}}
+	srv := &Server{Catalog: cat, SubtitleClient: client}
+	if _, err := srv.loadVideoSubtitles(ctx, &catalog.Video{ID: "video-refresh", DriveID: "drive-refresh", FileID: "file-refresh", FileName: "movie.mp4"}); err != nil {
+		t.Fatalf("prime subtitles: %v", err)
+	}
+	router := chi.NewRouter()
+	router.Get("/p/subtitle/{id}/{index}", srv.handleSubtitleFile)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/p/subtitle/video-refresh/0", nil))
+	if rr.Code != http.StatusOK || rr.Body.String() != "fresh subtitle" {
+		t.Fatalf("status=%d body=%q, want refreshed subtitle", rr.Code, rr.Body.String())
+	}
+	if client.subtitleCalls != 2 {
+		t.Fatalf("subtitle calls = %d, want prime plus one refresh", client.subtitleCalls)
 	}
 }
 
@@ -232,12 +449,10 @@ func TestHandleSubtitleFileProxiesSelectedSubtitle(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	drv := &apiStreamFakeDrive{subtitles: []drives.Subtitle{
+	client := &apiFakeSubtitleClient{subtitles: []subtitles.Subtitle{
 		{Name: "简体中文", Ext: "srt", Language: "zh-CN", URL: upstream.URL + "/movie.srt", SourceLabel: "inner"},
 	}}
-	reg := proxy.NewRegistry()
-	reg.Set("drive-1", drv)
-	srv := &Server{Catalog: cat, Proxy: proxy.New(reg)}
+	srv := &Server{Catalog: cat, SubtitleClient: client}
 
 	router := chi.NewRouter()
 	router.Get("/p/subtitle/{id}/{index}", srv.handleSubtitleFile)
@@ -1746,11 +1961,8 @@ func sameStringSet(a, b []string) bool {
 }
 
 type apiStreamFakeDrive struct {
-	localPath   string
-	fileID      string
-	subtitles   []drives.Subtitle
-	subtitleReq drives.SubtitleRequest
-	subtitleErr error
+	localPath string
+	fileID    string
 }
 
 func (d *apiStreamFakeDrive) Kind() string { return "fake" }
@@ -1778,12 +1990,27 @@ func (d *apiStreamFakeDrive) EnsureDir(context.Context, string) (string, error) 
 	return "", drives.ErrNotSupported
 }
 func (d *apiStreamFakeDrive) RootID() string { return "root" }
-func (d *apiStreamFakeDrive) Subtitles(_ context.Context, req drives.SubtitleRequest) ([]drives.Subtitle, error) {
-	d.subtitleReq = req
-	if d.subtitleErr != nil {
-		return nil, d.subtitleErr
+
+type apiFakeSubtitleClient struct {
+	subtitles     []subtitles.Subtitle
+	subtitleReq   subtitles.Request
+	subtitleReqs  []subtitles.Request
+	subtitleErr   error
+	subtitleCalls int
+	subtitleFunc  func(int, subtitles.Request) ([]subtitles.Subtitle, error)
+}
+
+func (c *apiFakeSubtitleClient) Subtitles(_ context.Context, req subtitles.Request) ([]subtitles.Subtitle, error) {
+	c.subtitleReq = req
+	c.subtitleReqs = append(c.subtitleReqs, req)
+	c.subtitleCalls++
+	if c.subtitleFunc != nil {
+		return c.subtitleFunc(c.subtitleCalls, req)
 	}
-	return d.subtitles, nil
+	if c.subtitleErr != nil {
+		return nil, c.subtitleErr
+	}
+	return c.subtitles, nil
 }
 
 func requestWithVideoID(method, target, videoID string, body *strings.Reader) *http.Request {

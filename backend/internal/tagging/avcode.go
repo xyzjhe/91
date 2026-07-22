@@ -1,6 +1,7 @@
 package tagging
 
 import (
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,8 +22,13 @@ var (
 		"IMPA", "DDK", "MVG", "HUNT", "NTRD", "SDDE", "DASS",
 		"MKMP", "BF", "BFDM",
 	}
-	defaultAVCodeMatcher = NewAVCodeMatcher(knownAVSeriesPrefixes)
+	defaultAVCodeMatcher    = NewAVCodeMatcher(knownAVSeriesPrefixes)
+	subtitleTailCodePattern = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])([A-Z][A-Z0-9]{1,15})[-_ ]?(\d{2,8})$`)
 )
+
+var subtitleCodeNoisePrefixes = map[string]struct{}{
+	"EP": {}, "FHD": {}, "HD": {}, "IMG": {}, "MOV": {}, "SAMPLE": {}, "VIDEO": {},
+}
 
 // AVCodeMatcher matches AV codes for one explicit prefix set.
 type AVCodeMatcher struct {
@@ -151,6 +157,43 @@ func ContainsAVCode(text string) bool {
 // FindAVCode 返回文本中出现的第一个内置车牌番号（原样片段），没有则返回空串。
 func FindAVCode(text string) string {
 	return defaultAVCodeMatcher.Find(text)
+}
+
+// FindSubtitleAVCode returns a canonical code suitable for a subtitle search.
+// It prefers the conservative built-in matcher, then accepts a generic code
+// only when it appears at the end of a file name. The tail restriction keeps
+// dates, resolutions and unrelated numbers in long titles out of lookups.
+func FindSubtitleAVCode(text string) string {
+	if code := FindAVCode(text); code != "" {
+		return canonicalSubtitleAVCode(code, SeriesOf(code))
+	}
+	base := strings.TrimSpace(text)
+	if ext := filepath.Ext(base); ext != "" {
+		base = strings.TrimSuffix(base, ext)
+	}
+	matches := subtitleTailCodePattern.FindStringSubmatch(strings.TrimSpace(base))
+	if len(matches) != 3 {
+		return ""
+	}
+	prefix := strings.ToUpper(matches[1])
+	if _, noisy := subtitleCodeNoisePrefixes[prefix]; noisy {
+		return ""
+	}
+	number := matches[2]
+	if len(number) == 4 && (strings.HasPrefix(number, "19") || strings.HasPrefix(number, "20")) {
+		return ""
+	}
+	return prefix + "-" + number
+}
+
+func canonicalSubtitleAVCode(code, series string) string {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	compact := strings.NewReplacer("-", "", "_", "", " ", "").Replace(code)
+	prefix := strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToUpper(series))
+	if prefix != "" && strings.HasPrefix(compact, prefix) && len(compact) > len(prefix) {
+		return prefix + "-" + compact[len(prefix):]
+	}
+	return strings.Trim(strings.NewReplacer("_", "-", " ", "-").Replace(code), "-")
 }
 
 // SeriesOf 从一个内置车牌番号中提取"车牌前缀"（系列名），统一为大写。

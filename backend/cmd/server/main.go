@@ -31,6 +31,7 @@ import (
 	"github.com/video-site/backend/internal/nightly"
 	"github.com/video-site/backend/internal/preview"
 	"github.com/video-site/backend/internal/proxy"
+	"github.com/video-site/backend/internal/subtitles"
 )
 
 const (
@@ -132,10 +133,11 @@ func main() {
 	}
 
 	apiServer := &api.Server{
-		Catalog:   cat,
-		Proxy:     app.proxy,
-		LocalDir:  cfg.Storage.LocalPreviewDir,
-		UploadDir: app.localUploadDir(),
+		Catalog:        cat,
+		Proxy:          app.proxy,
+		SubtitleClient: subtitles.NewGuangYaPanClient(subtitles.GuangYaPanConfig{}),
+		LocalDir:       cfg.Storage.LocalPreviewDir,
+		UploadDir:      app.localUploadDir(),
 		OnVideoUploaded: func(v *catalog.Video) {
 			app.enqueueUploadedVideo(ctx, v)
 		},
