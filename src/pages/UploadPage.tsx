@@ -1,6 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Film, UploadCloud } from "lucide-react";
+import { Check, UploadCloud } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { SectionHeader } from "@/components/SectionHeader";
 import { uploadVideo } from "@/data/videos";
@@ -65,7 +65,7 @@ export default function UploadPage() {
   return (
     <AppShell>
       <div className="container page-section">
-        <SectionHeader title="上传视频" extra="本地视频会加入站内列表" />
+        <SectionHeader title="上传视频" />
         <form className="upload-panel" onSubmit={handleSubmit}>
           <label className="upload-drop">
             <input
@@ -122,7 +122,6 @@ export default function UploadPage() {
 
           <div className="upload-actions">
             <button className="upload-submit" type="submit" disabled={!file || saving}>
-              <Film size={16} />
               {saving ? "上传中" : "上传"}
             </button>
           </div>

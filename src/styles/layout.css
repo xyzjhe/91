@@ -426,10 +426,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-width: 140px;
-  height: 42px;
-  padding: 0 var(--space-5);
+  height: 36px;
+  padding: 0 var(--space-4);
   border-radius: var(--radius-sm);
   background: var(--accent-gradient);
   color: var(--text-on-accent);
@@ -494,10 +492,6 @@
   .upload-drop {
     min-height: 160px;
     padding: var(--space-4);
-  }
-
-  .upload-submit {
-    width: 100%;
   }
 
   .back-to-top {
